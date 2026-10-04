@@ -97,6 +97,7 @@ a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px sol
     <button id="addBtn" type="button" class="hot" aria-label="Tracks aus Dateien hinzufügen">＋ Tracks</button>
     <input id="fileIn" type="file" multiple accept="audio/*,.mp3,.m4a,.aac,.wav,.aif,.aiff,.flac,.caf,.ogg,.opus" hidden>
     <button id="play" type="button" disabled>Play</button>
+    <button id="micBtn" type="button" aria-pressed="false" title="Auf den Ton aus der Umgebung reagieren (Mikrofon)">🎤 Mikro</button>
     <button id="nextTrack" type="button" disabled aria-label="Nächster Track">⏭</button>
     <select id="quality" aria-label="Auflösung" hidden>
       <option value="native">Nativ (Max)</option>
@@ -426,7 +427,7 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 11 · Knöpfe nach Drehen korrigiert';
+  const BUILD = 'Build 12 · Mikrofon-Eingang';
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -527,6 +528,7 @@ function analyzeEnvelopes(env, hopS) {
 
   // ===== Zustand =====
   let viz = null, srcNode = null, fileNode = null, W = 0, H = 0, fxScale = 1;
+  let micOn = false, micStream = null, micNode = null;
   let auto = true, lastSwitch = performance.now(), presetStart = performance.now(), curName = null;
   let guard = true, maxHz = 0, slowSecs = 0, sixtySecs = 0, hintShown = false;
   const slowMarks = [];
@@ -866,7 +868,7 @@ function analyzeEnvelopes(env, hopS) {
   let autoGain = 1;
   const pushGain = tc => inGain.gain.setTargetAtTime(+gainEl.value * (toggles.auto ? autoGain : 1), ctx.currentTime, tc);
   const applyGain = () => { pushGain(0.03); $('gainOut').textContent = (+gainEl.value).toFixed(1) + '×'; };
-  const applyLat = () => { delayNode.delayTime.setTargetAtTime(+latEl.value / 1000, ctx.currentTime, 0.02); $('latOut').textContent = latEl.value + ' ms'; };
+  const applyLat = () => { delayNode.delayTime.setTargetAtTime((micOn ? 0 : +latEl.value) / 1000, ctx.currentTime, 0.02); $('latOut').textContent = latEl.value + ' ms'; };
   {
     const g = store.get('am-gain2', null), l = store.get('am-lat', null);
     if (g !== null) gainEl.value = g;
@@ -1261,7 +1263,7 @@ function analyzeEnvelopes(env, hopS) {
   window.addEventListener('pointerdown', touched, true);
   window.addEventListener('input', touched, true);
   setInterval(() => {
-    if (!audio.paused && $('fine').hidden && performance.now() - lastTouch > 12000) hud.classList.add('off');
+    if ((!audio.paused || micOn) && $('fine').hidden && performance.now() - lastTouch > 12000) hud.classList.add('off');
   }, 1000);
 
   // ===== Track-Scan =====
@@ -1376,6 +1378,7 @@ function analyzeEnvelopes(env, hopS) {
   }
   async function playAt(i) {
     if (i < 0 || i >= queue.length) return;
+    if (micOn) stopMic();
     qi = i; const f = queue[i]; curFile = f;
     trg('Track geladen: ' + f.name + ' (' + (f.size / 1048576).toFixed(1) + ' MB)');
     curAnalysis = null; scanType = null; lastBi = null; $('timeline').hidden = true;
@@ -1415,10 +1418,51 @@ function analyzeEnvelopes(env, hopS) {
   audio.addEventListener('loadedmetadata', () => { if (curAnalysis) drawTimeline(curAnalysis); });
   $('play').addEventListener('click', async () => {
     try { await ctx.resume(); } catch (e) {}
+    if (micOn) { stopMic(); if (audio.src) { connect(fileNode); } }
     if (audio.paused) { try { await audio.play(); say(''); } catch (e) { say('Abspielen blockiert. Tippe nochmal auf Play.'); } }
     else audio.pause();
   });
   $('nextTrack').addEventListener('click', () => playAt(qi + 1));
+
+  // ===== Mikrofon: auf den Ton aus der Umgebung reagieren =====
+  function micUi() { $('micBtn').classList.toggle('hot', micOn); $('micBtn').setAttribute('aria-pressed', String(micOn)); $('micBtn').textContent = micOn ? '🎤 Mikro an' : '🎤 Mikro'; }
+  async function startMic() {
+    if (micOn) return;
+    trg('Tipp: Mikro an');
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { say('Das Mikrofon geht hier nicht. Öffne die Seite in Safari oder Chrome über den Link.'); erg('Mikro: getUserMedia fehlt'); return; }
+    try { await ctx.resume(); } catch (e) {}
+    try { if (navigator.audioSession) navigator.audioSession.type = 'play-and-record'; } catch (e) {}
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 }, video: false });
+    } catch (e) {
+      try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e2) {}
+      say(e && e.name === 'NotAllowedError' ? 'Mikrofon nicht erlaubt. Erlaube es in den Einstellungen von Safari bzw. Chrome für diese Seite.' : 'Kein Mikrofon gefunden.');
+      erg('Mikro fehlgeschlagen: ' + (e && e.name) + ' ' + (e && e.message || '')); return;
+    }
+    wantPlay = false; audio.pause(); bufExit();
+    micStream = stream; micNode = ctx.createMediaStreamSource(stream); micOn = true;
+    curAnalysis = null; scanType = null; lastBi = null; $('timeline').hidden = true;
+    resetBeat(); agcReset(); applyLat();
+    connect(micNode);                                  // nur in die Analyse, nie zu den Lautsprechern (sonst Rückkopplung)
+    $('intro').hidden = true; setTrackInfo(); $('track').textContent = 'Mikrofon · Umgebung, live'; say('');
+    stream.getAudioTracks().forEach(t => t.addEventListener('ended', () => { if (micOn) { rea('Mikrofon wurde vom System beendet'); stopMic(); } }));
+    micUi();
+    const st = stream.getAudioTracks()[0] && stream.getAudioTracks()[0].getSettings ? stream.getAudioTracks()[0].getSettings() : {};
+    erg('Mikro läuft · Echo-Filter ' + (st.echoCancellation ? 'AN (stört)' : 'aus') + ', Rauschfilter ' + (st.noiseSuppression ? 'AN (stört)' : 'aus') + ', Auto-Lautstärke ' + (st.autoGainControl ? 'AN (stört)' : 'aus'));
+  }
+  function stopMic() {
+    if (!micOn) return;
+    micOn = false;
+    try { if (micNode) micNode.disconnect(); } catch (e) {}
+    try { if (micStream) micStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+    micNode = null; micStream = null;
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+    if (srcNode && srcNode !== fileNode) srcNode = null;
+    resetBeat(); agcReset(); applyLat(); micUi();
+    setTrackInfo(); rea('Mikro aus');
+  }
+  $('micBtn').addEventListener('click', () => { if (micOn) { trg('Tipp: Mikro aus'); stopMic(); } else startMic(); });
 
   const isAudio = f => f && (/^audio\//.test(f.type) || /\.(mp3|m4a|aac|wav|aif|aiff|flac|caf|ogg|opus)$/i.test(f.name));
   const dropEl = $('drop');
