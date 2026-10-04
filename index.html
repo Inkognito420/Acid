@@ -184,13 +184,53 @@ function analyzeEnvelopes(env, hopS) {
     if (sc * w > best) { best = sc * w; bpm = b; phase = ph; }
   }
   // Phase fein nachziehen
-  const Pf = 60 / bpm / hopS;
+  let Pf = 60 / bpm / hopS;
   let bestPh = phase, bestS = -1;
   for (let p = phase - Pf / 16; p <= phase + Pf / 16; p += 0.25) {
     let s = 0; for (let x = p; x < N - 1; x += Pf) { const i = Math.round(x); if (i >= 0) s += o[i]; }
     if (s > bestS) { bestS = s; bestPh = p; }
   }
   phase = ((bestPh % Pf) + Pf) % Pf;
+
+  // Feinabgleich: jeden Kick einzeln im 6-ms-Raster suchen und eine Gerade durch alle legen.
+  // Ergebnis: Tempo auf ca. 0,01 BPM genau, das Raster driftet bis zum Track-Ende nicht weg.
+  if (env.lowF && env.lowF.length > 64) {
+    const q = env.lowF.length / N, L = env.lowF.length, of = new Float32Array(L), Pf0 = Pf;
+    for (let i = 1; i < L; i++) of[i] = Math.max(0, env.lowF[i] - env.lowF[i - 1]);
+    // Startfenster: die 32 Schläge mit dem stärksten Kick; dann Fenster verdoppeln, bis der ganze Track drin ist
+    const K0 = Math.floor((L - 2 - phase * q) / (Pf * q));
+    let c0 = 0, cBest = -1;
+    for (let k = 0; k + 32 <= K0; k += 8) {
+      let e = 0; for (let j = k; j < k + 32; j++) { const i = Math.round(phase + j * Pf); if (i > 0 && i < N) e += o[i]; }
+      if (e > cBest) { cBest = e; c0 = k + 16; }
+    }
+    for (let span = 32, it = 0; it < 14; it++, span = Math.min(span * 2, 2 * K0 + 2)) {
+      const P4 = Pf * q, ph4 = phase * q, win = P4 * 0.12, pk = [];
+      const kLo = Math.max(0, Math.round(c0 - span / 2)), kHi = Math.min(K0, Math.round(c0 + span / 2));
+      for (let k = kLo; k < kHi; k++) {
+        const c = ph4 + k * P4; let bi = -1, bv = 0;
+        for (let i = Math.max(1, Math.ceil(c - win)); i <= Math.min(L - 2, Math.floor(c + win)); i++) if (of[i] > bv) { bv = of[i]; bi = i; }
+        if (bi > 0) {
+          const a1 = of[bi - 1], a3 = of[bi + 1], den = a1 - 2 * bv + a3;
+          const d = den < 0 ? Math.max(-0.5, Math.min(0.5, 0.5 * (a1 - a3) / den)) : 0;
+          pk.push([k, bi + d, bv]);
+        }
+      }
+      if (pk.length < 16) break;
+      const vs = pk.map(p => p[2]).sort((x, y) => x - y), thr = Math.max(vs[Math.floor(vs.length * 0.4)], 0.25 * vs[Math.floor(vs.length * 0.9)]);
+      let sw = 0, sk = 0, st = 0, skk = 0, skt = 0;
+      for (const [k, tt, v] of pk) if (v >= thr && v > 0) { sw += v; sk += v * k; st += v * tt; skk += v * k * k; skt += v * k * tt; }
+      const det = sw * skk - sk * sk;
+      if (!(det > 0)) break;
+      const slope = (sw * skt - sk * st) / det, icpt = (st - slope * sk) / sw;
+      const nP = slope / q;
+      if (!isFinite(nP) || Math.abs(nP - Pf0) / Pf0 > 0.012) break;   // Sicherheitsnetz: nur kleine Korrekturen
+      Pf = nP; phase = icpt / q;
+      if (kLo === 0 && kHi === K0 && it >= 10) break;
+    }
+    phase = ((phase % Pf) + Pf) % Pf;
+    bpm = 60 / (Pf * hopS);
+  }
   const beatS = 60 / bpm;
 
   // Werte pro Schlag
@@ -384,7 +424,7 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 6 · Wechsel nur automatisch, an Abschnitten';
+  const BUILD = 'Build 7 · Tempo-Feinabgleich (0,01 BPM, 6-ms-Raster)';
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -1173,7 +1213,8 @@ function analyzeEnvelopes(env, hopS) {
     const hop = Math.round(SR * 0.02322);
     const segFrames = Math.round(60 / (hop / SR));
     const total = Math.floor(decoded.duration * SR / hop);
-    const env = { low: new Float32Array(total), m1: new Float32Array(total), m2: new Float32Array(total), hi: new Float32Array(total), full: new Float32Array(total) };
+    const SUB = 4;                                     // Bassband zusätzlich 4x feiner (ca. 6 ms) für genaues Tempo
+    const env = { lowF: new Float32Array(total * SUB), low: new Float32Array(total), m1: new Float32Array(total), m2: new Float32Array(total), hi: new Float32Array(total), full: new Float32Array(total) };
     const keys = ['low', 'm1', 'm2', 'hi', 'full'];
     for (let f0 = 0; f0 < total; f0 += segFrames) {
       const frames = Math.min(segFrames, total - f0);
@@ -1196,6 +1237,14 @@ function analyzeEnvelopes(env, hopS) {
           let s = 0; const base = f * hop;
           for (let k = 0; k < hop; k++) { const v = d[base + k]; s += v * v; }
           out[f0 + f] = Math.sqrt(s / hop);
+          if (c === 0) {
+            const sh = hop / SUB;
+            for (let u = 0; u < SUB; u++) {
+              let s2 = 0; const b2 = base + Math.round(u * sh), e2 = base + Math.round((u + 1) * sh);
+              for (let k = b2; k < e2; k++) { const v = d[k]; s2 += v * v; }
+              env.lowF[(f0 + f) * SUB + u] = Math.sqrt(s2 / Math.max(1, e2 - b2));
+            }
+          }
         }
       }
       report(Math.min(0.95, (f0 + frames) / total));
@@ -1272,7 +1321,7 @@ function analyzeEnvelopes(env, hopS) {
       } else {
         curAnalysis = A;
         if (A.grid) setBpm(A.bpm, true);
-        erg('Scan fertig: ' + (A.grid ? A.bpm.toFixed(1) + ' BPM, ' + A.drops + ' Drops' : 'kein festes Raster'));
+        erg('Scan fertig: ' + (A.grid ? A.bpm.toFixed(2) + ' BPM, ' + A.drops + ' Drops' : 'kein festes Raster'));
         setTrackInfo(A.grid ? A.drops + (A.drops === 1 ? ' Drop' : ' Drops') : 'kein festes Raster, läuft live');
         $('mood').textContent = 'Stimmung: ' + moodText(A.mood) + ' · ' + (A.grid ? A.bpm.toFixed(1) + ' BPM' : 'ohne festes Tempo');
         drawTimeline(A);
