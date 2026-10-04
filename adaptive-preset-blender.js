@@ -8,32 +8,28 @@
   const average = (arr) => arr.reduce((sum, v) => sum + v, 0) / Math.max(1, arr.length);
 
   /**
-   * AdaptivePresetBlender
+   * AdaptivePresetBlender (für den Browser angepasst)
    *
-   * - no fixed 3s transition time
-   * - dynamic blend duration based on audio signal
-   * - buffered analysis window to predict transition timing
-   * - cross-deformation of both presets during blend
-   * - smooth, synchronised, non-abrupt visual transitions
+   * Behalten, weil es mit Butterchurn geht:
+   *  - Übergangsdauer richtet sich nach dem Klang (laut/hart = kurz, ruhig = lang)
+   *  - Analysefenster der letzten Momente
+   *  - gegenseitige Verformung während des Übergangs (Verschiebung, Zoom, Drehung), kommt als Zahlen heraus
+   *
+   * Entfernt, weil es in Butterchurn nicht geht:
+   *  - Preset A / B selbst laden, überblenden und zurücksetzen. Butterchurn überblendet über
+   *    loadPreset(preset, Sekunden) selbst; mehrfaches Neuladen würde das Bild springen lassen.
    */
   class AdaptivePresetBlender {
-    constructor(visualizer, options = {}) {
-      if (!visualizer || typeof visualizer.loadPreset !== 'function') {
-        throw new Error('AdaptivePresetBlender requires a Butterchurn visualizer instance.');
-      }
-
-      this.viz = visualizer;
+    constructor(options = {}) {
       this.options = Object.assign({
-        historySize: 12,
+        historySize: 60,
         minBlendDuration: 450,
         maxBlendDuration: 2800,
         defaultBlendDuration: 1400,
         audioResponse: 0.65,
         mutualInfluenceStrength: 0.42,
-        deformationBias: 0.5,
         easing: 'smoothstep'
       }, options);
-
       this.buffer = [];
       this.state = {
         active: false,
@@ -41,17 +37,9 @@
         blendDuration: this.options.defaultBlendDuration,
         progress: 0,
         mix: 0,
-        transitionWindow: null,
         deformed: { x: 0, y: 0, scale: 1, rotation: 0 },
-        audioInfluence: 0,
-        isReady: false
+        audioInfluence: 0
       };
-
-      this._presetA = null;
-      this._presetB = null;
-      this._transitionInitiated = false;
-      this._lastAudioSample = null;
-      this._activeBlend = 0;
     }
 
     pushAudioSample(audioState) {
@@ -155,102 +143,47 @@
       return smoothstep(t);
     }
 
-    /**
-     * Trigger a transition between preset A and preset B based on current audio signal.
-     * If no audio window is available, fallback to default duration.
-     */
-    startTransition(presetA, presetB, audioWindow = null) {
-      if (!presetA || !presetB) {
-        throw new Error('Both presets are required to start a transition.');
-      }
+    /** Übergangsdauer in Millisekunden passend zum Klang der letzten Momente. */
+    suggestDuration() {
+      return this._computeBlendDuration(this._analyzeWindow());
+    }
 
-      this._presetA = presetA;
-      this._presetB = presetB;
-      this._transitionInitiated = false;
+    /** Beginnt einen Übergang, der durationMs dauert (Butterchurn blendet selbst, hier läuft nur die Verformung mit). */
+    begin(durationMs, now = performance.now()) {
       this.state.active = true;
+      this.state.startTime = now;
+      this.state.blendDuration = Math.max(100, durationMs || this.options.defaultBlendDuration);
       this.state.progress = 0;
       this.state.mix = 0;
-      this.state.audioInfluence = 0;
-      this.state.deformed.x = 0;
-      this.state.deformed.y = 0;
-      this.state.deformed.scale = 1;
-      this.state.deformed.rotation = 0;
-
-      const windowData = audioWindow || this._analyzeWindow();
-      this.state.blendDuration = this._computeBlendDuration(windowData);
-      this.state.startTime = performance.now();
-      this.state.transitionWindow = windowData;
-
-      try {
-        this.viz.loadPreset(presetA, 0.0);
-      } catch (e) {
-        console.error('Failed to load presetA during transition start:', e);
-      }
-
       return this;
     }
 
-    /**
-     * Call this every frame. It evaluates elapsed time and audio to create a dynamic blend.
-     */
+    /** Jedes Bild aufrufen. Liefert die aktuelle Verformung (neutral, wenn kein Übergang läuft). */
     update(audioState = null, now = performance.now()) {
       if (audioState) this.pushAudioSample(audioState);
-
+      const s = this.state;
+      if (!s.active) return s;
       const windowData = this._analyzeWindow();
-      if (!this.state.active) {
-        return this.state;
-      }
+      const progress = clamp((now - s.startTime) / s.blendDuration, 0, 1);
+      s.progress = progress;
+      s.mix = this._getEasing(progress);
+      s.audioInfluence = clamp((windowData.energy || 0) * this.options.audioResponse, 0, 1);
 
-      const elapsed = now - this.state.startTime;
-      const progress = clamp(elapsed / this.state.blendDuration, 0, 1);
-      const eased = this._getEasing(progress);
-
-      this.state.progress = progress;
-      this.state.mix = eased;
-      this.state.audioInfluence = clamp((windowData.energy || 0) * this.options.audioResponse, 0, 1);
-
-      // Trigger preset B around mid-transition + audio based route
-      if (!this._transitionInitiated && progress > 0.5) {
-        this._transitionInitiated = true;
-        try {
-          this.viz.loadPreset(this._presetB, 2.4);
-        } catch (e) {
-          console.error('Failed to load presetB during adaptive transition:', e);
-        }
-      }
-
-      // Compute combined deformation from both visuals
-      const midPoint = 1 - Math.abs(this.state.mix - 0.5) * 2; // strongest near center
+      const midPoint = 1 - Math.abs(s.mix - 0.5) * 2;      // am stärksten in der Mitte des Übergangs
       const influence = this.options.mutualInfluenceStrength;
       const x = ((windowData.bass || 0) * 0.5 + (windowData.flux || 0) * 0.35) * midPoint * influence;
       const y = ((windowData.mid || 0) * 0.5 + (windowData.brightness || 0) * 0.35) * midPoint * influence;
       const scale = 1 + ((windowData.energy || 0) * 0.24 + (windowData.beat || 0) * 0.12) * midPoint * influence;
       const rotation = ((windowData.treble || 0) * 18 + (windowData.centroid || 0) * 12) * midPoint * influence;
-
-      this.state.deformed = {
-        x: x * 2,
-        y: y * 2,
-        scale,
-        rotation
-      };
+      s.deformed = { x: x * 2, y: y * 2, scale, rotation };
 
       if (progress >= 1) {
-        this.state.active = false;
-        this.state.progress = 1;
-        this.state.mix = 1;
-        try {
-          this.viz.loadPreset(this._presetB, 1.6);
-        } catch (e) {
-          console.error('Failed to finalise presetB during adaptive transition:', e);
-        }
+        s.active = false;
+        s.deformed = { x: 0, y: 0, scale: 1, rotation: 0 };
       }
-
-      return this.state;
+      return s;
     }
 
-    /**
-     * Exposes the blended parameters to the renderer.
-     */
     getBlendState() {
       return {
         progress: this.state.progress,
@@ -266,21 +199,15 @@
 })(window);
 
 /*
-  Example usage:
+  Beispiel:
 
-  const blender = new AdaptivePresetBlender(viz, {
-    defaultBlendDuration: 1400,
-    minBlendDuration: 450,
-    maxBlendDuration: 2800,
-    easing: 'smoothstep'
-  });
-
-  blender.startTransition(presetA, presetB, audioWindow);
-
-  function loop() {
-    const audioState = audioReactive ? audioReactive.update() : null;
-    const blend = blender.update(audioState, performance.now());
-    viz.render();
-    const params = blender.getBlendState();
-  }
+  const blender = new AdaptivePresetBlender();
+  // laufend, jedes Bild:
+  blender.pushAudioSample({ energy, flux, bass, mid, treble, beat, brightness, centroid });   // alle 0..1
+  // bei einem Presetwechsel:
+  const ms = blender.suggestDuration();
+  viz.loadPreset(preset, ms / 1000);
+  blender.begin(ms);
+  // jedes Bild:
+  const d = blender.update().deformed;   // x, y, scale, rotation
 */
