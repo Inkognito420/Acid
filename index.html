@@ -115,6 +115,7 @@ a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px sol
   <div class="row">
     <button id="prev" type="button" aria-label="Vorheriges Preset">◀</button>
     <button id="next" type="button" aria-label="Nächstes Preset">▶</button>
+    <button id="fav" type="button" aria-pressed="false" aria-label="Preset als Favorit markieren" title="Favorit: kommt öfter dran">☆</button>
     <button id="auto" type="button" class="hot" hidden>Auto</button>
     <button id="guard" type="button" class="hot" title="Überspringt Presets, die keine 60 fps schaffen" hidden>Wächter</button>
     <button id="fineBtn" type="button" aria-expanded="false" aria-controls="fine">Sound ⚙</button>
@@ -164,6 +165,7 @@ a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px sol
 <script src="https://cdn.jsdelivr.net/npm/butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra.min.js"></script>
 <script src="audio-reactive-controller.js"></script>
 <script src="adaptive-preset-blender.js"></script>
+<script src="acid-presets.js"></script>
 <script>
 // ===== Track-Analyse (reine Rechenfunktion, ohne Browser-Abhängigkeiten) =====
 // env: {low, m1, m2, hi, full} als Float32Arrays mit RMS pro Frame, hopS: Sekunden pro Frame
@@ -373,6 +375,9 @@ function analyzeEnvelopes(env, hopS) {
   const presets = {};
   try { Object.assign(presets, window.butterchurnPresets.getPresets()); } catch (e) {}
   try { Object.assign(presets, window.butterchurnPresetsExtra.getPresets()); } catch (e) {}
+  // Eigene Acid-Techno-Presets (acid-presets.js); fehlt die Datei, läuft alles ohne sie weiter
+  const ACID = new Set();
+  try { const ap = window.ACID_PRESETS || {}; for (const k in ap) { presets[k] = ap[k]; ACID.add(k); } } catch (e) {}
   const names = Object.keys(presets);
   if (!names.length) { say('Keine Presets geladen. Lade die Seite neu.'); return; }
   const broken = new Set(), slow = new Set();
@@ -431,7 +436,7 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 18 · Fehlerbehebung aus Code-Durchsicht';
+  const BUILD = 'Build 19 · Eigene Acid-Presets + Favoriten';
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -637,6 +642,7 @@ function analyzeEnvelopes(env, hopS) {
   const hist = []; let histPos = -1; const recent = [];
 
   let morphOn = false;
+  Object.assign(REACT, {"Acid \u00b7 Tunnel":[0.96,0.18,0.01],"Acid \u00b7 Kick-Gitter":[1.53,0.32,0.06],"Acid \u00b7 Strobe-Ringe":[0.32,0.13,0.2]});
   // Presets, die in der Messung auf keinen Ton reagiert haben, kommen in der Auswahl nicht mehr vor
   const DEAD = new Set(Object.keys(REACT).filter(n => REACT[n][0] + REACT[n][1] + REACT[n][2] < 0.05));
   // Reaktions-Angleich: schwach reagierende Presets bekommen am Anfang ihrer Formeln eine Zeile, die Bass/Mitten/Höhen stärker auslenkt,
@@ -644,7 +650,7 @@ function analyzeEnvelopes(env, hopS) {
   const tunedCache = new Map();
   function tuned(n) {
     const p = presets[n], R = REACT[n];
-    if (!toggles.tune || !R || !p || !/a\.(bass|mid|treb)/.test(p.frame_eqs_str || '')) return p;
+    if (!toggles.tune || ACID.has(n) || !R || !p || !/a\.(bass|mid|treb)/.test(p.frame_eqs_str || '')) return p;
     if (tunedCache.has(n)) return tunedCache.get(n);
     const S = R[0] + R[1] + R[2], K = clamp(Math.sqrt(0.5 / Math.max(S, 0.08)), 0.7, 3);
     let out = p;
@@ -654,6 +660,14 @@ function analyzeEnvelopes(env, hopS) {
     }
     tunedCache.set(n, out); return out;
   }
+  // Favoriten: Stern-Knopf merkt sich Presets (bleibt im Browser gespeichert); die Auswahl nimmt sie öfter
+  const favs = new Set(store.get('am-favs', []).filter(n => typeof n === 'string'));
+  function showFav() { const on = favs.has(curName); const b = $('fav'); b.textContent = on ? '★' : '☆'; b.classList.toggle('hot', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+  $('fav').addEventListener('click', () => {
+    if (!curName) return;
+    if (favs.has(curName)) { favs.delete(curName); rea('Favorit entfernt: ' + curName); } else { favs.add(curName); rea('Favorit: ' + curName); }
+    store.set('am-favs', [...favs]); showFav();
+  });
   function usable(n) { return !broken.has(n) && !DEAD.has(n) && !(guard && slow.has(n)); }
   function loadByName(n, blend, pushHist = true) {
     rea('Preset: ' + n);
@@ -664,7 +678,7 @@ function analyzeEnvelopes(env, hopS) {
     if (blender && blend > 0.2 && toggles.morph && !reduceMotion) { blender.begin(blend * 1000); morphOn = true; }
     recent.push(n); if (recent.length > 16) recent.shift();
     if (pushHist) { hist.splice(histPos + 1); hist.push(n); if (hist.length > 60) hist.shift(); histPos = hist.length - 1; }
-    $('preset').textContent = n;
+    $('preset').textContent = n; showFav();
     return true;
   }
   function randomUsable() {
@@ -692,6 +706,15 @@ function analyzeEnvelopes(env, hopS) {
   let lastFitInfo = '';
   function pickPreset(tg) {
     const sv = toggles.mood ? soundTarget() : null;
+    // Favoriten (ca. 30 %) und eigene Acid-Presets (ca. 12 %) kommen bevorzugt dran, passend zum Klang gewählt
+    const lastFew = recent.slice(-6), pool = (set, minLeft) => { const a = []; for (const n of set) if (presets[n] && usable(n) && n !== curName && !lastFew.includes(n)) a.push(n); return a.length >= minLeft ? a : []; };
+    for (const [set, chance, tag] of [[favs, 0.3, 'Favorit'], [ACID, 0.12, 'Acid-Preset']]) {
+      if (Math.random() >= chance) continue;
+      const a = pool(set, 1); if (!a.length) continue;
+      let best = null, bf = -9;
+      for (const n of a) { const f = reactFit(n, sv) + Math.random() * 0.35; if (f > bf) { bf = f; best = n; } }
+      lastFitInfo = ' · ' + tag; return best;
+    }
     const known = [], unknown = [];
     for (const n of names) {
       if (!usable(n) || recent.includes(n) || n === curName) continue;
