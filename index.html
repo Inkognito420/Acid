@@ -431,7 +431,7 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 15 · Reaktions-Angleich der Presets';
+  const BUILD = 'Build 16 · Mikro-Pegel bis +36 dB';
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -938,7 +938,7 @@ function analyzeEnvelopes(env, hopS) {
     const tau = Math.min(12, 0.8 + 0.8 * agc.active);     // am Anfang schnell, dann langsam
     agc.e = agc.e === null ? e : agc.e + (e - agc.e) * (1 - Math.exp(-0.1 / tau));
     agc.db = 10 * Math.log10(agc.e);
-    autoGain = Math.pow(10, clamp(AGC_TARGET - agc.db, -12, 15) / 20);
+    autoGain = Math.pow(10, clamp(AGC_TARGET - agc.db, -12, micOn ? 36 : 15) / 20);   // Mikrofon ist viel leiser als eine Datei: bis +36 dB
     if (toggles.auto) pushGain(0.5);
     if (!$('fine').hidden) $('autoInfo').textContent = agcText();
     if (agc.active >= agc.nextLog) { agc.nextLog += 20; if (toggles.auto) rea(agcText() + ' (Reaktion ×' + (+gainEl.value).toFixed(1) + ')'); }
