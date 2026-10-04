@@ -430,7 +430,7 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 13 · Übergänge nach Klang, Verformung';
+  const BUILD = 'Build 14 · stärkere Übergangs-Verformung';
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -1208,9 +1208,9 @@ function analyzeEnvelopes(env, hopS) {
     if (morphOn && blender) {
       const d = blender.update(null, t).deformed;
       if (!blender.state.active) morphOn = false;
-      const rot = Math.max(-2, Math.min(2, d.rotation * 0.25));                              // höchstens 2°
-      const zoom = Math.min(0.08, (d.scale - 1) * 0.5) + Math.abs(rot) * Math.PI / 180 * 2.2;   // etwas größer, damit beim Drehen keine Ecken sichtbar werden
-      const dx = Math.max(-1.5, Math.min(1.5, d.x * 3)), dy = Math.max(-1.5, Math.min(1.5, d.y * 3));
+      const rot = Math.max(-4, Math.min(4, d.rotation * 0.5));                               // höchstens 4°
+      const zoom = Math.min(0.14, (d.scale - 1) * 0.9) + Math.abs(rot) * Math.PI / 180 * 2.2;   // etwas größer, damit beim Drehen keine Ecken sichtbar werden
+      const dx = Math.max(-3, Math.min(3, d.x * 6)), dy = Math.max(-3, Math.min(3, d.y * 6));
       sc *= 1 + zoom;
       if (morphOn) tx = 'translate(' + dx.toFixed(2) + '%,' + dy.toFixed(2) + '%) rotate(' + rot.toFixed(2) + 'deg) ';
     }
