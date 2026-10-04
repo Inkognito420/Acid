@@ -96,13 +96,13 @@ a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px sol
   <div class="row">
     <button id="play" type="button" disabled>Play</button>
     <button id="nextTrack" type="button" disabled aria-label="Nächster Track">⏭</button>
-    <select id="quality" aria-label="Auflösung">
-      <option value="native" selected>Nativ (Max)</option>
-      <option value="2k">2K · 2560</option>
+    <select id="quality" aria-label="Auflösung" hidden>
+      <option value="native">Nativ (Max)</option>
+      <option value="2k" selected>2K · 2560</option>
       <option value="1080">1080p</option>
       <option value="720">720p (Akku)</option>
     </select>
-    <select id="color" aria-label="Farbdarstellung">
+    <select id="color" aria-label="Farbdarstellung" hidden>
       <option value="srgb">Farbe: Original</option>
       <option value="p3">Farbe: P3 Vivid</option>
       <option value="p3oled">Farbe: P3 + OLED-Schwarz</option>
@@ -113,7 +113,7 @@ a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px sol
     <button id="prev" type="button" aria-label="Vorheriges Preset">◀</button>
     <button id="next" type="button" aria-label="Nächstes Preset">▶</button>
     <button id="auto" type="button" class="hot">Auto</button>
-    <button id="guard" type="button" class="hot" title="Überspringt Presets, die keine 120 fps schaffen">120-Wächter</button>
+    <button id="guard" type="button" class="hot" title="Überspringt Presets, die keine 60 fps schaffen">Wächter</button>
     <select id="bars" aria-label="Wechsel nach Takten">
       <option value="8">8 Takte</option><option value="16" selected>16 Takte</option><option value="32">32 Takte</option>
     </select>
@@ -387,7 +387,7 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 4 · Sicherheits-Modus, ruhige Leiste';
+  const BUILD = 'Build 5 · fest 60 fps, 2K, P3 + OLED-Schwarz';
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -535,7 +535,7 @@ function analyzeEnvelopes(env, hopS) {
   window.addEventListener('resize', queueResize);
   window.addEventListener('orientationchange', queueResize);
   if (window.visualViewport) window.visualViewport.addEventListener('resize', queueResize);
-  { const q = store.get('am-quality', null); if (q && $('quality').querySelector('option[value="' + q + '"]')) $('quality').value = q; }
+  $('quality').value = '2k';                       // fest: 2K (auf dem iPhone 15 Pro entspricht das der vollen Pixelzahl)
   $('quality').addEventListener('change', () => { store.set('am-quality', $('quality').value); W = 0; resize(); });
   resize();
 
@@ -544,7 +544,6 @@ function analyzeEnvelopes(env, hopS) {
   const colorEl = $('color');
   if (!hasP3) { colorEl.querySelector('option[value="p3"]').disabled = true; colorEl.querySelector('option[value="p3oled"]').disabled = true; }
   colorEl.value = hasP3 ? 'p3oled' : 'srgb';
-  { const c = store.get('am-color', null); if (c && (hasP3 || c === 'srgb')) colorEl.value = c; }
   let filterBase = '';
   function applyColor() {
     const mode = colorEl.value;
@@ -697,16 +696,20 @@ function analyzeEnvelopes(env, hopS) {
     return true;
   }
 
-  // ===== Render-Schleife und 120-Wächter =====
+  // ===== Render-Schleife (fest 60 fps) und Wächter =====
   $('guard').addEventListener('click', () => { guard = !guard; $('guard').classList.toggle('hot', guard); slowSecs = 0; });
   const switchMs = () => +$('bars').value * 4 * 60000 / bpm;
   const engaged = () => scanActive() || beat.state !== 'warten';
 
   let frames = 0, fpsT = performance.now();
+  let lastDraw = 0;
+  const FRAME_MIN = 1000 / 60 - 3;                 // fest 60 Bilder pro Sekunde: auf 120-Hz-Displays wird jedes zweite Bild gezeichnet
   function loop() {
     requestAnimationFrame(loop);
     if (!viz) return;
     const t = performance.now();
+    if (t - lastDraw < FRAME_MIN) return;
+    lastDraw = t;
     if (!frozen) {
       try { viz.render(); } catch (e) { if (curName) broken.add(curName); nextPreset(0); }
       sampleFrame(t);
@@ -723,23 +726,15 @@ function analyzeEnvelopes(env, hopS) {
   }
   function perSecond(fps, t) {
     $('fps').textContent = fps;
-    if (fps > maxHz) maxHz = fps;
-    const hz = maxHz >= 100 ? 120 : 60;
-    $('hz').textContent = hz;
-    if (hz === 60 && fps >= 50) sixtySecs++;
-    if (!hintShown && sixtySecs >= 5 && maxHz < 70) {
-      hintShown = true;
-      say('Läuft mit 60 Hz. Öffne den Link direkt in Safari statt in der Claude-App, und schalte den Stromsparmodus aus.');
-      setTimeout(() => { if (maxHz < 100) say(''); }, 10000);
-    }
-    if (!guard || hz !== 120 || t - lastSwitch < 3000) { slowSecs = 0; return; }
-    if (fps < 108) slowSecs++; else slowSecs = 0;
+    $('hz').textContent = '60';
+    if (!guard || t - lastSwitch < 3000) { slowSecs = 0; return; }
+    if (fps < 52) slowSecs++; else slowSecs = 0;
     if (slowSecs >= 3 && curName) {
       slow.add(curName); slowSecs = 0;
       slowMarks.push(t); while (slowMarks.length && t - slowMarks[0] > 60000) slowMarks.shift();
       if (slowMarks.length >= 6) {
         guard = false; $('guard').classList.remove('hot'); slow.clear(); slowMarks.length = 0;
-        say('Gerade schaffen viele Presets keine 120 fps. 120-Wächter ist aus. Tipp: Farbe auf „P3 Vivid“ oder Auflösung auf 2K.');
+        say('Gerade schaffen viele Presets keine 60 fps. Wächter ist aus.');
         return;
       }
       nextPreset(1.5);
