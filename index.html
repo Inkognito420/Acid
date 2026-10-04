@@ -114,9 +114,6 @@ a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px sol
     <button id="next" type="button" aria-label="Nächstes Preset">▶</button>
     <button id="auto" type="button" class="hot">Auto</button>
     <button id="guard" type="button" class="hot" title="Überspringt Presets, die keine 60 fps schaffen">Wächter</button>
-    <select id="bars" aria-label="Wechsel nach Takten">
-      <option value="8">8 Takte</option><option value="16" selected>16 Takte</option><option value="32">32 Takte</option>
-    </select>
     <button id="fineBtn" type="button" aria-expanded="false" aria-controls="fine">Sound ⚙</button>
     <div id="preset">–</div>
   </div>
@@ -387,7 +384,7 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 5 · fest 60 fps, 2K, P3 + OLED-Schwarz';
+  const BUILD = 'Build 6 · Wechsel nur automatisch, an Abschnitten';
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -499,7 +496,9 @@ function analyzeEnvelopes(env, hopS) {
   if (reduceMotion && !savedToggles) { toggles.pulse = false; toggles.spark = false; }
 
   const beat = { t: performance.now(), n: 0, state: 'warten', lastKick: 0, kickStreak: 0, breakStart: 0, iois: [] };
-  let levelAvg = 0, lastT = performance.now(), sectionChangeT = 0;
+  let levelAvg = 0, lastT = performance.now(), sectionChangeT = 0, sectionBeat0 = 0;
+  const PHRASE_BEATS = 16 * 4;                     // Phrase = 16 Takte, wird ab Abschnittsbeginn gezählt, nicht mehr nach festem Zähler
+  const MIN_REST_BEATS = 8 * 4;                    // kurz vor einem Abschnittsende kein Extra-Wechsel: der Wechsel kommt dann mit dem Abschnitt
   let kickGlow = 0, pulse = 0, flash = 0, build = 0, vign = 0, hue = 0, lastHue = 0;
   let hiFast = 0, hiAtBreak = 0, buildStart = 0;
   let rFast = 0, rSlow = 0, acidAct = 0;
@@ -698,7 +697,7 @@ function analyzeEnvelopes(env, hopS) {
 
   // ===== Render-Schleife (fest 60 fps) und Wächter =====
   $('guard').addEventListener('click', () => { guard = !guard; $('guard').classList.toggle('hot', guard); slowSecs = 0; });
-  const switchMs = () => +$('bars').value * 4 * 60000 / bpm;
+  const switchMs = () => PHRASE_BEATS * 60000 / bpm;
   const engaged = () => scanActive() || beat.state !== 'warten';
 
   let frames = 0, fpsT = performance.now();
@@ -982,14 +981,14 @@ function analyzeEnvelopes(env, hopS) {
   function onBeat(t, P) {
     if (!auto || frozen || !toggles.phrase) return;
     if (!(beat.state === 'groove' || beat.state === 'drop')) return;
-    const phraseBeats = +$('bars').value * 4;
-    if (beat.n > 0 && beat.n % phraseBeats === 0 && t - sectionChangeT > 8 * P) nextPreset(Math.min(2.7, 2 * P / 1000), moodTarget('groove'));
+    const since = beat.n - sectionBeat0;
+    if (since > 0 && since % PHRASE_BEATS === 0 && t - sectionChangeT > 8 * P) nextPreset(Math.min(2.7, 2 * P / 1000), moodTarget('groove'));
   }
 
   // Abschnittswechsel: hier passieren Schnitt, Blitz und Stimmungswechsel
   function onSection(type, prev, P, t) {
     rea('Abschnitt: ' + (prev || '–') + ' → ' + type);
-    sectionChangeT = t;
+    sectionChangeT = t; sectionBeat0 = beat.n;
     if (frozen) return;
     if (type === 'drop') {
       build = 0; vign = 0;
@@ -1029,9 +1028,9 @@ function analyzeEnvelopes(env, hopS) {
     if (bi !== lastBi) {
       const prevBi = lastBi; lastBi = bi;
       if (prevBi !== null && bi === prevBi + 1 && auto && !frozen && toggles.phrase && (type === 'groove' || type === 'drop')) {
-        const phraseBeats = +$('bars').value * 4;
-        const pos = bi - A.barPhase;
-        if (pos > 0 && pos % phraseBeats === 0 && t - sectionChangeT > 8 * P) nextPreset(Math.min(2.7, 2 * P / 1000), moodTarget('groove'));
+        const since = bi - Math.round((s.t0 - A.beat0) / A.beatS);
+        const rest = (s.t1 - ts) / A.beatS;
+        if (since > 0 && since % PHRASE_BEATS === 0 && rest >= MIN_REST_BEATS && t - sectionChangeT > 8 * P) nextPreset(Math.min(2.7, 2 * P / 1000), moodTarget('groove'));
       }
     }
   }
