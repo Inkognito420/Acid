@@ -426,7 +426,7 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 9 · Knopf ＋ Tracks (Dateiauswahl)';
+  const BUILD = 'Build 10 · Kick-Puls auf dem Raster, ruhigere Wechsel';
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -1037,9 +1037,9 @@ function analyzeEnvelopes(env, hopS) {
   }
 
   function onKick(t, strength) {
+    if (scanActive()) return;                       // im Scan-Modus kommt der Puls exakt vom Raster (scanFrame)
     kickGlow = 1;
-    pulse = Math.max(pulse, 0.012 + 0.03 * strength);
-    if (scanActive()) return;
+    pulse = Math.max(pulse, 0.02 + 0.04 * strength);
     const P = 60000 / bpm, gap = t - beat.lastKick;
     if (beat.lastKick && gap < 2000) {
       let p = gap; while (p < 300) p *= 2; while (p > 600) p /= 2;
@@ -1084,6 +1084,7 @@ function analyzeEnvelopes(env, hopS) {
       return;
     }
     if (!auto) return;
+    if (t - lastSwitch < 32 * P) { rea('Wechsel ausgelassen: letzter Wechsel weniger als 8 Takte her'); return; }
     if (type === 'break' && (prev === 'groove' || prev === 'drop')) nextPreset(Math.min(4, 4 * P / 1000), moodTarget('break'));
     else if (type === 'groove' && (prev === 'intro' || prev === 'warten')) nextPreset(Math.min(2.7, 2 * P / 1000), moodTarget('groove'));
     else if (type === 'outro') nextPreset(Math.min(4, 4 * P / 1000), moodTarget('outro'));
@@ -1110,6 +1111,12 @@ function analyzeEnvelopes(env, hopS) {
     build = type === 'buildup' && s ? clamp((ts - s.t0) / Math.max(0.1, s.t1 - s.t0)) : 0;
     if (bi !== lastBi) {
       const prevBi = lastBi; lastBi = bi;
+      // Kick-Puls auf dem Raster: kommt pünktlich auf dem Schlag, nicht erst nach der Erkennung
+      if (prevBi !== null && bi === prevBi + 1 && (type === 'groove' || type === 'drop' || type === 'buildup') && !audio.paused) {
+        const sinceDrop = type === 'drop' ? 1 : 0;
+        kickGlow = 1; pulse = Math.max(pulse, type === 'drop' ? 0.05 : type === 'buildup' ? 0.02 + 0.03 * build : 0.035);
+        if (beat.n % 4 === 0) pulse += 0.01 * (1 + sinceDrop);   // Takt-Eins etwas stärker
+      }
       if (prevBi !== null && bi === prevBi + 1 && auto && !frozen && toggles.phrase && (type === 'groove' || type === 'drop')) {
         const since = bi - Math.round((s.t0 - A.beat0) / A.beatS);
         const rest = (s.t1 - ts) / A.beatS;
