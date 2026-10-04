@@ -22,8 +22,8 @@ html,body{height:100%;background:var(--bg);color:var(--fg);overflow:hidden;font-
 #fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
 #flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;mix-blend-mode:screen}
 #hud{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));
-  max-height:100dvh;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
   background:linear-gradient(to top,var(--panel) 70%,transparent);display:flex;flex-direction:column;gap:10px;transition:opacity .35s}
+@media (orientation:landscape){#hud{max-height:100dvh;overflow-y:auto;overscroll-behavior:contain}}
 #hud.off{opacity:0;pointer-events:none}
 button,select,input,#hud{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
@@ -426,7 +426,7 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 10 · Kick-Puls auf dem Raster, ruhigere Wechsel';
+  const BUILD = 'Build 11 · Knöpfe nach Drehen korrigiert';
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -575,8 +575,15 @@ function analyzeEnvelopes(env, hopS) {
     if (viz) { try { viz.setRendererSize(W, H); } catch (e) {} }
     $('res').textContent = W + '×' + H;
   }
-  let rT = 0;
-  const queueResize = () => { clearTimeout(rT); rT = setTimeout(resize, 150); };
+  let rT = 0, hT1 = 0, hT2 = 0;
+  // iOS merkt sich nach dem Drehen manchmal die alte Lage der Knöpfe: Leiste zurücksetzen und neu aufbauen
+  function refreshHud() {
+    const h = $('hud'); h.scrollTop = 0;
+    h.style.display = 'none'; void h.offsetHeight; h.style.display = '';
+    const r = h.getBoundingClientRect(), vv = window.visualViewport;
+    rea('Drehung: ' + window.innerWidth + '×' + window.innerHeight + (vv ? ' (sichtbar ' + Math.round(vv.width) + '×' + Math.round(vv.height) + ')' : '') + ', Leiste Höhe ' + Math.round(r.height) + ' px');
+  }
+  const queueResize = () => { clearTimeout(rT); rT = setTimeout(resize, 150); clearTimeout(hT1); clearTimeout(hT2); hT1 = setTimeout(refreshHud, 250); hT2 = setTimeout(refreshHud, 900); };
   window.addEventListener('resize', queueResize);
   window.addEventListener('orientationchange', queueResize);
   if (window.visualViewport) window.visualViewport.addEventListener('resize', queueResize);
@@ -817,6 +824,27 @@ function analyzeEnvelopes(env, hopS) {
       }
       nextPreset(1.5);
     }
+  }
+
+  // Treffer-Korrektur: zählt, was man SIEHT. Landet ein Tipp (wegen iOS-Fehler nach dem Drehen) auf einem anderen Knopf als dem,
+  // über dem der Finger war, wird der Knopf unter dem Finger ausgelöst.
+  { const hud = $('hud'); let tp = null;
+    hud.addEventListener('touchstart', e => { tp = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null; }, { passive: true, capture: true });
+    hud.addEventListener('touchend', e => {
+      if (!tp || e.changedTouches.length !== 1) { tp = null; return; }
+      const c = e.changedTouches[0], moved = Math.hypot(c.clientX - tp.x, c.clientY - tp.y); tp = null;
+      if (moved > 10) return;
+      const tgt = e.target && e.target.closest ? e.target : null;
+      if (tgt && tgt.closest('select,input,label')) return;
+      const tb = tgt && tgt.closest('button');
+      let hit = null;
+      for (const b of hud.querySelectorAll('button')) {
+        if (b.disabled || !b.offsetParent) continue;
+        const r = b.getBoundingClientRect();
+        if (c.clientX >= r.left && c.clientX <= r.right && c.clientY >= r.top && c.clientY <= r.bottom) { hit = b; break; }
+      }
+      if (hit && hit !== tb) { e.preventDefault(); rea('Treffer-Versatz korrigiert: ' + (tb ? tb.id || tb.textContent : 'kein Knopf') + ' → ' + (hit.id || hit.textContent)); hit.click(); }
+    }, { capture: true });
   }
 
   // ===== Schalter im Sound-Menü =====
