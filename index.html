@@ -431,7 +431,7 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 17 · Auto- und Wächter-Knopf entfernt (laufen fest)';
+  const BUILD = 'Build 18 · Fehlerbehebung aus Code-Durchsicht';
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -532,7 +532,7 @@ function analyzeEnvelopes(env, hopS) {
 
   // ===== Zustand =====
   let viz = null, srcNode = null, fileNode = null, W = 0, H = 0, fxScale = 1;
-  let micOn = false, micStream = null, micNode = null;
+  let micOn = false, micStream = null, micNode = null, micGainSaved = 1;
   let auto = true, lastSwitch = performance.now(), presetStart = performance.now(), curName = null;
   let guard = true, maxHz = 0, slowSecs = 0, sixtySecs = 0, hintShown = false;
   const slowMarks = [];
@@ -1154,7 +1154,7 @@ function analyzeEnvelopes(env, hopS) {
       return;
     }
     if (!auto) return;
-    if (t - lastSwitch < 32 * P) { rea('Wechsel ausgelassen: letzter Wechsel weniger als 8 Takte her'); return; }
+    if (!scanActive() && t - lastSwitch < 32 * P) { rea('Wechsel ausgelassen: letzter Wechsel weniger als 8 Takte her'); return; }
     if (type === 'break' && (prev === 'groove' || prev === 'drop')) nextPreset(Math.min(4, 4 * P / 1000), moodTarget('break'));
     else if (type === 'groove' && (prev === 'intro' || prev === 'warten')) nextPreset(Math.min(2.7, 2 * P / 1000), moodTarget('groove'));
     else if (type === 'outro') nextPreset(Math.min(4, 4 * P / 1000), moodTarget('outro'));
@@ -1445,8 +1445,11 @@ function analyzeEnvelopes(env, hopS) {
     say('');
     try { await ctx.resume(); await audio.play(); } catch (err) { say('Track geladen. Tippe auf Play.'); }
     try { viz && viz.launchSongTitleAnim(f.name.replace(/\.[^.]+$/, '')); } catch (err) {}
+    applyScanFor(f);
+  }
+  function applyScanFor(f) {
     ensureScan(f).then(A => {
-      if (curFile !== f) return;
+      if (curFile !== f || micOn) return;
       if (!A || A.skipped) {
         setTrackInfo(A && A.skipped === 'lang' ? 'langer Mix, läuft live' : 'läuft live');
         erg('Kein Scan: ' + (A && A.skipped ? A.skipped : 'fehlgeschlagen') + ', läuft live');
@@ -1493,6 +1496,7 @@ function analyzeEnvelopes(env, hopS) {
     }
     wantPlay = false; audio.pause(); bufExit();
     micStream = stream; micNode = ctx.createMediaStreamSource(stream); micOn = true;
+    micGainSaved = +gainEl.value; if (micGainSaved !== 1) { gainEl.value = 1; applyGain(); }   // der Auto-Pegel regelt das Mikro; ein hoher Regler würde zusätzlich übersteuern
     curAnalysis = null; scanType = null; lastBi = null; $('timeline').hidden = true;
     resetBeat(); agcReset(); applyLat();
     connect(micNode);                                  // nur in die Analyse, nie zu den Lautsprechern (sonst Rückkopplung)
@@ -1510,8 +1514,10 @@ function analyzeEnvelopes(env, hopS) {
     micNode = null; micStream = null;
     try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
     if (srcNode && srcNode !== fileNode) srcNode = null;
+    gainEl.value = micGainSaved; applyGain();
     resetBeat(); agcReset(); applyLat(); micUi();
     setTrackInfo(); rea('Mikro aus');
+    if (curFile) applyScanFor(curFile);
   }
   $('micBtn').addEventListener('click', () => { if (micOn) { trg('Tipp: Mikro aus'); stopMic(); } else startMic(); });
 

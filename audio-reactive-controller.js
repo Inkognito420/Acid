@@ -127,7 +127,7 @@
     }
 
     update() {
-      const freqData = new Float32Array(this.analyser.frequencyBinCount);
+      const freqData = this._freq || (this._freq = new Float32Array(this.analyser.frequencyBinCount));
       this.analyser.getFloatFrequencyData(freqData);
 
       const bands = this._computeBandValues(freqData);
