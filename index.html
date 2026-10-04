@@ -94,6 +94,8 @@ a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px sol
   </div>
   <div id="timeline" hidden aria-label="Ablauf des Tracks"></div>
   <div class="row">
+    <button id="addBtn" type="button" class="hot" aria-label="Tracks aus Dateien hinzufügen">＋ Tracks</button>
+    <input id="fileIn" type="file" multiple accept="audio/*,.mp3,.m4a,.aac,.wav,.aif,.aiff,.flac,.caf,.ogg,.opus" hidden>
     <button id="play" type="button" disabled>Play</button>
     <button id="nextTrack" type="button" disabled aria-label="Nächster Track">⏭</button>
     <select id="quality" aria-label="Auflösung" hidden>
@@ -424,7 +426,7 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 8 · Presets passend zum Klangbild';
+  const BUILD = 'Build 9 · Knopf ＋ Tracks (Dateiauswahl)';
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -1395,7 +1397,17 @@ function analyzeEnvelopes(env, hopS) {
     const dt = e.dataTransfer; if (!dt) return;
     let files = Array.from(dt.files || []);
     if (!files.length && dt.items) files = Array.from(dt.items).map(i => i.kind === 'file' ? i.getAsFile() : null).filter(Boolean);
-    if (!files.length) { say('Da kam keine Datei an. Zieh die Tracks aus der Dateien-App.'); return; }
+    if (!files.length) { say('Da kam keine Datei an. Nimm „＋ Tracks“ oder zieh die Tracks aus der Dateien-App.'); return; }
+    addTracks(files);
+  });
+  // Knopf „＋ Tracks“: normale Dateiauswahl (Android, iPhone, Rechner)
+  $('addBtn').addEventListener('click', () => { trg('Tipp: ＋ Tracks'); $('fileIn').value = ''; $('fileIn').click(); });
+  $('fileIn').addEventListener('change', e => {
+    const files = Array.from(e.target.files || []);
+    rea(files.length + ' Datei(en) ausgewählt');
+    if (files.length) addTracks(files);
+  });
+  function addTracks(files) {
     const tracks = files.filter(isAudio);
     if (!tracks.length) { say('Keine Audiodatei dabei. Nimm MP3, M4A, WAV oder AIFF.'); return; }
     const wasIdle = qi < 0 || (audio.ended && qi >= queue.length - 1);
@@ -1408,7 +1420,7 @@ function analyzeEnvelopes(env, hopS) {
       setTimeout(() => say(''), 4000);
       if (queue[qi + 1]) ensureScan(queue[qi + 1]);
     }
-  });
+  }
 
   // ===== System =====
   canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); viz = null; say('Grafik wurde vom System pausiert. Startet neu …'); });
