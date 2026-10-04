@@ -131,6 +131,7 @@ a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px sol
       <button id="t-pulse" type="button" class="hot">Kick-Puls</button>
       <button id="t-spark" type="button" class="hot">Hats &amp; Snares</button>
       <button id="t-acid" type="button" class="hot">Acid-Farbe</button>
+      <button id="t-tune" type="button" class="hot" title="Schwach reagierende Presets werden verstärkt, zu starke gedämpft (gilt ab dem nächsten Bildwechsel)">Reaktions-Angleich</button>
       <button id="t-morph" type="button" class="hot" title="Beim Bildwechsel verformt sich das Bild kurz mit dem Klang">Übergangs-Verformung</button>
     </div>
     <div class="row">
@@ -430,7 +431,7 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 14 · stärkere Übergangs-Verformung';
+  const BUILD = 'Build 15 · Reaktions-Angleich der Presets';
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -538,7 +539,7 @@ function analyzeEnvelopes(env, hopS) {
   let frozen = false;
   let bpm = 140;
   const savedToggles = store.get('am-toggles', null);
-  const toggles = Object.assign({ auto: true, mood: true, phrase: true, drop: true, build: true, pulse: true, spark: true, acid: true, morph: true }, savedToggles || {});
+  const toggles = Object.assign({ auto: true, mood: true, phrase: true, drop: true, build: true, pulse: true, spark: true, acid: true, morph: true, tune: true }, savedToggles || {});
   const reduceMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
   if (reduceMotion && !savedToggles) { toggles.pulse = false; toggles.spark = false; }
 
@@ -636,11 +637,29 @@ function analyzeEnvelopes(env, hopS) {
   const hist = []; let histPos = -1; const recent = [];
 
   let morphOn = false;
-  function usable(n) { return !broken.has(n) && !(guard && slow.has(n)); }
+  // Presets, die in der Messung auf keinen Ton reagiert haben, kommen in der Auswahl nicht mehr vor
+  const DEAD = new Set(Object.keys(REACT).filter(n => REACT[n][0] + REACT[n][1] + REACT[n][2] < 0.05));
+  // Reaktions-Angleich: schwach reagierende Presets bekommen am Anfang ihrer Formeln eine Zeile, die Bass/Mitten/Höhen stärker auslenkt,
+  // sehr stark reagierende werden etwas gedämpft. Wirkt nur bei Presets, die den Ton in ihren Formeln nutzen.
+  const tunedCache = new Map();
+  function tuned(n) {
+    const p = presets[n], R = REACT[n];
+    if (!toggles.tune || !R || !p || !/a\.(bass|mid|treb)/.test(p.frame_eqs_str || '')) return p;
+    if (tunedCache.has(n)) return tunedCache.get(n);
+    const S = R[0] + R[1] + R[2], K = clamp(Math.sqrt(0.5 / Math.max(S, 0.08)), 0.7, 3);
+    let out = p;
+    if (Math.abs(K - 1) > 0.08) {
+      const k = K.toFixed(2), f = v => 'a.' + v + '=1+' + k + '*(a.' + v + '-1);';
+      out = Object.assign({}, p, { frame_eqs_str: f('bass') + f('bass_att') + f('mid') + f('mid_att') + f('treb') + f('treb_att') + p.frame_eqs_str });
+    }
+    tunedCache.set(n, out); return out;
+  }
+  function usable(n) { return !broken.has(n) && !DEAD.has(n) && !(guard && slow.has(n)); }
   function loadByName(n, blend, pushHist = true) {
     rea('Preset: ' + n);
     if (!viz) return false;
-    try { viz.loadPreset(presets[n], blend); } catch (e) { broken.add(n); return false; }
+    try { viz.loadPreset(tuned(n), blend); }
+    catch (e) { tunedCache.set(n, presets[n]); try { viz.loadPreset(presets[n], blend); } catch (e2) { broken.add(n); return false; } }
     curName = n; presetStart = lastSwitch = performance.now(); prevLuma = null;
     if (blender && blend > 0.2 && toggles.morph && !reduceMotion) { blender.begin(blend * 1000); morphOn = true; }
     recent.push(n); if (recent.length > 16) recent.shift();
@@ -870,7 +889,7 @@ function analyzeEnvelopes(env, hopS) {
   }
 
   // ===== Schalter im Sound-Menü =====
-  const togIds = { auto: 't-auto', mood: 't-mood', phrase: 't-phrase', drop: 't-drop', build: 't-build', pulse: 't-pulse', spark: 't-spark', acid: 't-acid', morph: 't-morph' };
+  const togIds = { auto: 't-auto', mood: 't-mood', phrase: 't-phrase', drop: 't-drop', build: 't-build', pulse: 't-pulse', spark: 't-spark', acid: 't-acid', morph: 't-morph', tune: 't-tune' };
   for (const k in togIds) {
     const el = $(togIds[k]);
     el.classList.toggle('hot', toggles[k]);
