@@ -387,7 +387,8 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  trg('Seite geladen');
+  const BUILD = 'Build 4 · Sicherheits-Modus, ruhige Leiste';
+  trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
 
