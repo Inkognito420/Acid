@@ -115,8 +115,8 @@ a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px sol
   <div class="row">
     <button id="prev" type="button" aria-label="Vorheriges Preset">◀</button>
     <button id="next" type="button" aria-label="Nächstes Preset">▶</button>
-    <button id="auto" type="button" class="hot">Auto</button>
-    <button id="guard" type="button" class="hot" title="Überspringt Presets, die keine 60 fps schaffen">Wächter</button>
+    <button id="auto" type="button" class="hot" hidden>Auto</button>
+    <button id="guard" type="button" class="hot" title="Überspringt Presets, die keine 60 fps schaffen" hidden>Wächter</button>
     <button id="fineBtn" type="button" aria-expanded="false" aria-controls="fine">Sound ⚙</button>
     <div id="preset">–</div>
   </div>
@@ -431,7 +431,7 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 16 · Mikro-Pegel bis +36 dB';
+  const BUILD = 'Build 17 · Auto- und Wächter-Knopf entfernt (laufen fest)';
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
