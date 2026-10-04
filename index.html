@@ -22,8 +22,10 @@ html,body{height:100%;background:var(--bg);color:var(--fg);overflow:hidden;font-
 #fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
 #flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;mix-blend-mode:screen}
 #hud{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));
+  max-height:100dvh;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
   background:linear-gradient(to top,var(--panel) 70%,transparent);display:flex;flex-direction:column;gap:10px;transition:opacity .35s}
 #hud.off{opacity:0;pointer-events:none}
+button,select,input,#hud{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .brand{font-family:var(--display);font-weight:800;font-size:15px;letter-spacing:.04em;margin-right:auto}
 .brand b{color:var(--acid)}
@@ -359,6 +361,7 @@ function analyzeEnvelopes(env, hopS) {
     renderLog();
   }
   const trg = t => logEv('a', t), rea = t => logEv('r', t), erg = t => logEv('e', t), err = t => logEv('x', t);
+  let hudWoke = 0;                                 // Zeitpunkt, an dem ein Tipp die Leiste geweckt hat
   const KIND = { a: 'AUSLÖSER ', r: 'REAKTION  ', e: 'ERGEBNIS  ', x: 'FEHLER    ' };
   function logText() { return LOG.map(l => l.t + '  ' + KIND[l.k] + l.x).join('\n'); }
   function renderLog() {
@@ -379,7 +382,7 @@ function analyzeEnvelopes(env, hopS) {
         + ' · iOS-Audio-Modus ' + (as ? as.type + '/' + as.state : 'nicht vorhanden')
         + ' · Player ' + (a.paused ? 'pausiert' : 'spielt') + ' ' + a.currentTime.toFixed(1) + '/' + (isFinite(a.duration) ? a.duration.toFixed(0) : '?') + ' s'
         + ' · Lautstärke ' + a.volume + (a.muted ? ' STUMM' : '') + ' · bereit ' + a.readyState
-        + ' · Pegel im Analysator ' + level() + ' · ' + agcText() + ' · Track ' + (curFile ? curFile.name : '–') + ' · Erkennung ' + (curAnalysis ? 'Scan' : 'live');
+        + ' · Pegel im Analysator ' + level() + ' · ' + agcText() + (bufState && bufState.buf ? ' · SICHERHEITS-MODUS' : '') + ' · Track ' + (curFile ? curFile.name : '–') + ' · Erkennung ' + (curAnalysis ? 'Scan' : 'live');
     } catch (e) { return 'Status nicht lesbar: ' + e.message; }
   }
   const $$ = id => document.getElementById(id);
@@ -406,12 +409,22 @@ function analyzeEnvelopes(env, hopS) {
   // Bedienung protokollieren (Knöpfe, Regler, Auswahl, Tipp aufs Bild)
   document.addEventListener('click', e => {
     const b = e.target.closest && e.target.closest('button'); if (!b || /^log|^beep/.test(b.id)) return;
+    if (performance.now() - hudWoke < 700) return;
     trg('Tipp: ' + (b.textContent || b.id).trim() + (b.classList.contains('hot') ? ' (war an)' : ''));
   }, true);
   document.addEventListener('change', e => { const el = e.target; if (el && el.tagName === 'SELECT') trg('Auswahl: ' + (el.options[el.selectedIndex] || {}).text); }, true);
   let sliderT = 0;
   document.addEventListener('input', e => { const el = e.target; if (!el || el.type !== 'range') return; clearTimeout(sliderT); sliderT = setTimeout(() => trg('Regler ' + el.id + ' = ' + el.value), 400); }, true);
   canvas.addEventListener('pointerup', () => trg('Tipp/Wisch aufs Bild'));
+
+  // Zurück aus dem Hintergrund (z. B. App zum zweiten Mal geöffnet): Audio-Sitzung und Engine neu anstoßen
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') { rea('Seite im Hintergrund'); return; }
+    rea('Seite wieder sichtbar · Audio-Engine ' + ctx.state);
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+    ctx.resume().then(() => rea('Audio-Engine nach Rückkehr: ' + ctx.state), () => {});
+  });
+  window.addEventListener('pageshow', e => { if (e.persisted) rea('Seite aus dem Zwischenspeicher zurück'); });
 
   // Testtöne: Welcher Weg ist hörbar?
   function makeWav(sec, freq, amp) {
@@ -764,8 +777,8 @@ function analyzeEnvelopes(env, hopS) {
   // ===== Auto-Pegel: gleicht nur die Empfindlichkeit des Visualizers an, der Ton zu den Lautsprechern bleibt unverändert =====
   // Ziel: Eingang im Mittel bei -12 dB (Spitzen bleiben unter dem Anschlag). Langsam gemittelt, damit Breaks und Drops ihren Unterschied behalten.
   const AGC_TARGET = -12, lvBuf = new Float32Array(levelAn.fftSize);
-  const agc = { e: null, active: 0, nextLog: 3, db: null };
-  function agcReset() { agc.e = null; agc.active = 0; agc.nextLog = 3; agc.db = null; autoGain = 1; pushGain(0.3); }
+  const agc = { e: null, active: 0, nextLog: 3, db: null, lastSig: performance.now() };
+  function agcReset() { agc.lastSig = performance.now(); agc.e = null; agc.active = 0; agc.nextLog = 3; agc.db = null; autoGain = 1; pushGain(0.3); }
   function agcText() {
     if (!toggles.auto) return 'Auto-Pegel aus. Reaktion wirkt direkt.';
     if (agc.db === null) return 'Auto-Pegel: wartet auf Ton.';
@@ -777,6 +790,7 @@ function analyzeEnvelopes(env, hopS) {
     let sum = 0; for (let i = 0; i < lvBuf.length; i++) sum += lvBuf[i] * lvBuf[i];
     const e = sum / lvBuf.length;
     if (e < 1e-5) return;                                  // Stille: Wert halten
+    agc.lastSig = performance.now();
     agc.active += 0.1;
     const tau = Math.min(12, 0.8 + 0.8 * agc.active);     // am Anfang schnell, dann langsam
     agc.e = agc.e === null ? e : agc.e + (e - agc.e) * (1 - Math.exp(-0.1 / tau));
@@ -787,6 +801,71 @@ function analyzeEnvelopes(env, hopS) {
     if (agc.active >= agc.nextLog) { agc.nextLog += 20; if (toggles.auto) rea(agcText() + ' (Reaktion ×' + (+gainEl.value).toFixed(1) + ')'); }
   }, 100);
   $('t-auto').addEventListener('click', () => { pushGain(0.2); $('autoInfo').textContent = agcText(); rea(agcText()); });
+
+  // ===== Sicherheits-Modus: Wenn der Player dem Visualizer keinen Ton liefert (z. B. manche Formate oder nach einer Unterbrechung),
+  // wird die Datei selbst dekodiert und über die Audio-Engine abgespielt. Der Player bleibt dabei die Uhr (Zeit, Pause, Spulen). =====
+  let bufState = null, wdSilent = 0, wdLimit = 4, driftHits = 0, lastResync = 0, resyncCount = 0;
+  function bufStop() {
+    if (bufState && bufState.src) { try { bufState.src.stop(); } catch (e) {} try { bufState.src.disconnect(); } catch (e) {} bufState.src = null; }
+  }
+  function bufStart() {
+    if (!bufState || !bufState.buf) return;
+    bufStop();
+    const pos = Math.max(0, Math.min(audio.currentTime, bufState.buf.duration - 0.05));
+    const src = ctx.createBufferSource(); src.buffer = bufState.buf; src.connect(bufState.out);
+    src.start(0, pos); bufState.src = src; bufState.t0 = ctx.currentTime - pos;
+  }
+  function bufExit() {
+    if (!bufState) return;
+    bufStop(); try { bufState.out.disconnect(); } catch (e) {}
+    try { if (fileNode) fileNode.connect(ctx.destination); } catch (e) {}
+    bufState = null;
+  }
+  async function enterBufferMode(why) {
+    if (bufState || !curFile) return;
+    const f = curFile; bufState = { busy: true };
+    rea('Sicherheits-Modus: ' + why + ' Datei wird selbst dekodiert …');
+    say('Sicherheits-Modus: Ton wird neu aufgebaut …');
+    try {
+      if (f.size > 250e6) throw new Error('Datei zu groß (' + (f.size / 1048576).toFixed(0) + ' MB)');
+      const raw = await f.arrayBuffer();
+      const buf = await new Promise((res, rej) => { const p = ctx.decodeAudioData(raw, res, rej); if (p && p.then) p.then(res, rej); });
+      if (curFile !== f) { bufState = null; return; }
+      const out = ctx.createGain(); out.connect(ctx.destination);
+      try { fileNode.disconnect(ctx.destination); } catch (e) {}
+      bufState = { buf, out, src: null, t0: 0 };
+      connect(out);
+      if (!audio.paused) bufStart();
+      wdLimit = 1.5;                                    // beim nächsten Mal schneller umschalten
+      say(''); rea('Sicherheits-Modus läuft: ' + buf.duration.toFixed(0) + ' s, ' + buf.sampleRate + ' Hz, ' + buf.numberOfChannels + ' Kanäle');
+    } catch (e) {
+      bufState = null; say('Dieser Track liefert keinen Ton. Probier MP3, M4A oder WAV.'); err('Sicherheits-Modus fehlgeschlagen: ' + (e && e.message || e));
+    }
+  }
+  audio.addEventListener('playing', () => { if (bufState && bufState.buf) bufStart(); });
+  audio.addEventListener('pause', () => bufStop());
+  audio.addEventListener('ended', () => bufStop());
+  audio.addEventListener('seeked', () => { if (bufState && bufState.buf && !audio.paused) bufStart(); });
+  // Wächter: Läuft der Player, aber der Visualizer bekommt länger keinen Ton → Sicherheits-Modus. Gleichlauf im Sicherheits-Modus prüfen.
+  setInterval(() => {
+    if (ctx.state !== 'running' || audio.paused || !isFinite(audio.duration)) { wdSilent = 0; return; }
+    if (bufState && bufState.buf) {
+      if (bufState.src) {
+        const drift = (ctx.currentTime - bufState.t0) - audio.currentTime;
+        if (Math.abs(drift) > 0.5) {
+          const nowT = performance.now();
+          if (++driftHits >= 3 && nowT - lastResync > 8000 && resyncCount < 4) {
+            driftHits = 0; lastResync = nowT; resyncCount++;
+            rea('Gleichlauf korrigiert (' + (drift * 1000).toFixed(0) + ' ms Abweichung)' + (resyncCount >= 4 ? ', ab jetzt nicht mehr (Uhren laufen unterschiedlich)' : '')); bufStart();
+          }
+        } else driftHits = 0;
+      }
+      return;
+    }
+    if (bufState || srcNode !== fileNode || audio.duration - audio.currentTime < 8) { wdSilent = 0; return; }
+    if (performance.now() - agc.lastSig > 700) wdSilent += 0.5; else wdSilent = 0;
+    if (wdSilent >= wdLimit) { wdSilent = 0; enterBufferMode('Der Player läuft, liefert dem Visualizer aber keinen Ton.'); }
+  }, 500);
 
   function setBpm(v, show) {
     bpm = clamp(v, 60, 200);
@@ -1030,7 +1109,7 @@ function analyzeEnvelopes(env, hopS) {
   }
 
   // ===== Gesten auf dem Bild =====
-  let pd = null, lpTimer = 0, tapTimer = 0, lastTapT = 0;
+  let pd = null, lpTimer = 0, tapTimer = 0, lastTapT = 0, hudWokeByTap = false;
   canvas.addEventListener('pointerdown', e => {
     pd = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId, frozen: false };
     clearTimeout(lpTimer);
@@ -1051,11 +1130,13 @@ function analyzeEnvelopes(env, hopS) {
       const now = performance.now();
       if (now - lastTapT < 300) {
         clearTimeout(tapTimer); lastTapT = 0;
+        if (hudWokeByTap) { hud.classList.add('off'); hudWokeByTap = false; }   // Doppeltipp ist ein Schnitt, keine Leiste
         flash = reduceMotion ? 0.2 : 0.6; burst(30); pulse = Math.max(pulse, 0.05);
         nextPreset(0, moodTarget('drop'));
       } else {
         lastTapT = now;
-        tapTimer = setTimeout(() => hud.classList.toggle('off'), 300);
+        if (hud.classList.contains('off')) { hud.classList.remove('off'); hudWoke = now; hudWokeByTap = true; lastTouch = now; }   // sofort sichtbar
+        else { hudWokeByTap = false; tapTimer = setTimeout(() => { if (!$('fine').hidden) $('fineBtn').click(); else hud.classList.add('off'); }, 260); }
       }
     }
   });
@@ -1067,7 +1148,7 @@ function analyzeEnvelopes(env, hopS) {
   window.addEventListener('pointerdown', touched, true);
   window.addEventListener('input', touched, true);
   setInterval(() => {
-    if (!audio.paused && $('fine').hidden && performance.now() - lastTouch > 6000) hud.classList.add('off');
+    if (!audio.paused && $('fine').hidden && performance.now() - lastTouch > 12000) hud.classList.add('off');
   }, 1000);
 
   // ===== Track-Scan =====
@@ -1176,6 +1257,7 @@ function analyzeEnvelopes(env, hopS) {
     qi = i; const f = queue[i]; curFile = f;
     trg('Track geladen: ' + f.name + ' (' + (f.size / 1048576).toFixed(1) + ' MB)');
     curAnalysis = null; scanType = null; lastBi = null; $('timeline').hidden = true;
+    bufExit(); wdSilent = 0; resyncCount = 0; driftHits = 0;
     resetBeat(); agcReset();
     if (audio.src) URL.revokeObjectURL(audio.src);
     audio.src = URL.createObjectURL(f);
