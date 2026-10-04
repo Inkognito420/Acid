@@ -436,7 +436,7 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 19 · Eigene Acid-Presets + Favoriten';
+  const BUILD = 'Build 20 · Mehr Abwechslung bei der Preset-Auswahl';
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -676,7 +676,7 @@ function analyzeEnvelopes(env, hopS) {
     catch (e) { tunedCache.set(n, presets[n]); try { viz.loadPreset(presets[n], blend); } catch (e2) { broken.add(n); return false; } }
     curName = n; presetStart = lastSwitch = performance.now(); prevLuma = null;
     if (blender && blend > 0.2 && toggles.morph && !reduceMotion) { blender.begin(blend * 1000); morphOn = true; }
-    recent.push(n); if (recent.length > 16) recent.shift();
+    recent.push(n); if (recent.length > 90) recent.shift();
     if (pushHist) { hist.splice(histPos + 1); hist.push(n); if (hist.length > 60) hist.shift(); histPos = hist.length - 1; }
     $('preset').textContent = n; showFav();
     return true;
@@ -721,7 +721,7 @@ function analyzeEnvelopes(env, hopS) {
       const P = profiles[n];
       (P && P.n >= 6 && P.nm >= 4 ? known : unknown).push(n);
     }
-    const explore = known.length < 30 ? 0.6 : 0.15;
+    const explore = known.length < 30 ? 0.6 : 0.3;
     if (!known.length || (unknown.length && Math.random() < explore)) {
       if (!unknown.length) return randomUsable();
       let best = null, bf = -1;
@@ -744,7 +744,7 @@ function analyzeEnvelopes(env, hopS) {
       if (sv) d += 1.6 * (1 - reactFit(n, sv));
       return [d, n];
     }).sort((a, b) => a[0] - b[0]);
-    const top = scored.slice(0, Math.min(5, scored.length));
+    const top = scored.slice(0, Math.min(scored.length, Math.max(20, Math.round(scored.length * 0.15))));   // breiter Topf statt nur 5: mehr Abwechslung
     const pick = top[Math.floor(Math.random() * top.length)][1];
     lastFitInfo = fitText(sv, pick); return pick;
   }
