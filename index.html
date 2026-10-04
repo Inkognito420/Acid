@@ -433,16 +433,26 @@ function analyzeEnvelopes(env, hopS) {
     catch (e) { err('Testton 2: ' + e.message); }
   });
 
-  // Lautlos-Schalter-Trick: ein stiller Player zwingt iOS in den Wiedergabe-Modus, damit die Audio-Engine nicht stumm bleibt
-  let silentEl = null;
+  // Lautlos-Schalter-Trick: ein stiller Player zwingt iOS in den Wiedergabe-Modus, damit die Audio-Engine nicht stumm bleibt.
+  // Er startet erst, wenn der Track schon läuft, und der Track wird danach wieder angeschoben, falls iOS ihn dabei pausiert.
+  let silentEl = null, wantPlay = false, resumeTries = 0;
+  document.addEventListener('click', e => { if (e.target.closest && e.target.closest('#play') && !audio.paused) wantPlay = false; }, true);
+  audio.addEventListener('ended', () => { wantPlay = false; });
+  function resumeIfCut(why) {
+    if (!wantPlay || !audio.paused || resumeTries >= 3) return;
+    resumeTries++; rea('iOS hat den Track pausiert (' + why + '), starte ihn wieder (' + resumeTries + ')');
+    audio.play().catch(e => err('Neustart fehlgeschlagen: ' + e.message));
+  }
   function startSilent() {
     if (silentEl) return;
     try {
       silentEl = new Audio(makeWav(1, 0, 0)); silentEl.loop = true; silentEl.setAttribute('playsinline', '');
-      silentEl.play().then(() => rea('Stiller Hilfs-Player läuft (hebt den Lautlos-Modus für die Audio-Engine auf)'), () => { silentEl = null; });
+      silentEl.play().then(() => { rea('Stiller Hilfs-Player läuft (hebt den Lautlos-Modus für die Audio-Engine auf)'); setTimeout(() => resumeIfCut('Hilfs-Player gestartet'), 150); },
+        e => { rea('Hilfs-Player blockiert: ' + e.message); silentEl = null; });
     } catch (e) { silentEl = null; }
   }
-  ['pointerdown', 'touchend', 'click'].forEach(ev => document.addEventListener(ev, startSilent, { capture: true, passive: true }));
+  audio.addEventListener('playing', () => { wantPlay = true; resumeTries = 0; startSilent(); });
+  audio.addEventListener('pause', () => { setTimeout(() => resumeIfCut('Pause ohne Tipp'), 200); });
 
   // Bedienung des Protokoll-Fensters
   $$('logBtn').addEventListener('click', () => {
