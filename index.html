@@ -70,15 +70,6 @@ a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px sol
 .note{font-size:11px;color:var(--dim);line-height:1.5}
 #mood{font-size:12px;color:var(--fg)}
 #linkTxt{-webkit-user-select:text;user-select:text;overflow-wrap:anywhere;min-width:0}
-#hud.kitopen{max-height:56dvh;overflow-y:auto;overscroll-behavior:contain}
-#kit{display:flex;flex-direction:column;gap:8px;padding-top:4px;border-top:1px solid var(--line)}
-#kit .row button{padding:7px 10px;min-height:34px}
-.kitgrid{display:grid;grid-template-columns:1fr 1fr;gap:2px 14px}
-.kitgrid .slider{flex:none}
-.sw{width:34px;padding:0!important;border-radius:50%!important;min-height:30px!important;height:30px;border:2px solid var(--line)!important}
-.sw.hot{border-color:#fff!important;box-shadow:0 0 0 2px var(--acid)}
-.kitlbl{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;min-width:7ch}
-#kitSel{flex:1;min-width:0;max-width:100%}
 @media (prefers-reduced-motion:reduce){#hud{transition:none}}
 </style>
 </head>
@@ -128,22 +119,7 @@ a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px sol
     <button id="auto" type="button" class="hot" hidden>Auto</button>
     <button id="guard" type="button" class="hot" title="Überspringt Presets, die keine 60 fps schaffen" hidden>Wächter</button>
     <button id="fineBtn" type="button" aria-expanded="false" aria-controls="fine">Sound ⚙</button>
-    <button id="kitBtn" type="button" aria-expanded="false" aria-controls="kit" title="Eigene Presets zusammenbauen">🧩 Baukasten</button>
     <div id="preset">–</div>
-  </div>
-  <div id="kit" hidden>
-    <div class="row"><span class="kitlbl">Form</span><span id="kitForms" class="row"></span></div>
-    <div class="row"><span class="kitlbl">Farbe</span><span id="kitPals" class="row"></span></div>
-    <div class="row"><span class="kitlbl">Spiegel</span><span id="kitSegs" class="row"></span></div>
-    <div class="kitgrid" id="kitSliders"></div>
-    <div class="row">
-      <button id="kitRand" type="button">🎲 Zufall</button>
-      <button id="kitSave" type="button" class="hot">💾 Speichern</button>
-      <button id="kitNew" type="button">＋ Als neues</button>
-      <button id="kitDel" type="button" disabled>🗑 Löschen</button>
-    </div>
-    <div class="row"><select id="kitSel" aria-label="Meine Presets"></select></div>
-    <div class="note">Du siehst alles sofort im Bild, die Auto-Wechsel pausieren solange das Menü offen ist. Gespeicherte Presets kommen ab dann von selbst dran (wie Favoriten) und stehen im Browser auf diesem Gerät.</div>
   </div>
   <div id="fine" hidden>
     <div id="mood">Stimmung: wird beim ersten Track ermittelt</div>
@@ -190,7 +166,6 @@ a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px sol
 <script src="audio-reactive-controller.js"></script>
 <script src="adaptive-preset-blender.js"></script>
 <script src="acid-presets.js"></script>
-<script src="acid-baukasten.js"></script>
 <script>
 // ===== Track-Analyse (reine Rechenfunktion, ohne Browser-Abhängigkeiten) =====
 // env: {low, m1, m2, hi, full} als Float32Arrays mit RMS pro Frame, hopS: Sekunden pro Frame
@@ -403,12 +378,6 @@ function analyzeEnvelopes(env, hopS) {
   // Eigene Acid-Techno-Presets (acid-presets.js); fehlt die Datei, läuft alles ohne sie weiter
   const ACID = new Set();
   try { const ap = window.ACID_PRESETS || {}; for (const k in ap) { presets[k] = ap[k]; ACID.add(k); } } catch (e) {}
-  // Eigene Presets aus dem Baukasten (acid-baukasten.js), im Browser gespeichert; fehlt die Datei, läuft alles ohne sie weiter
-  const KIT = window.AcidKit || null, KIT_PREV = '⚙ Baukasten (Vorschau)';
-  const kitSaved = KIT ? (store.get('am-kit-v1', []) || []).filter(s => s && typeof s.name === 'string' && s.p) : [];
-  for (let i = kitSaved.length - 1; i >= 0; i--) {
-    try { presets[kitSaved[i].name] = KIT.build(kitSaved[i].p); ACID.add(kitSaved[i].name); } catch (e) { kitSaved.splice(i, 1); }
-  }
   const names = Object.keys(presets);
   if (!names.length) { say('Keine Presets geladen. Lade die Seite neu.'); return; }
   const broken = new Set(), slow = new Set();
@@ -467,7 +436,7 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 21 · Preset-Baukasten';
+  const BUILD = 'Build 22 · Stand wie Build 20 (Baukasten pausiert)';
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -572,7 +541,7 @@ function analyzeEnvelopes(env, hopS) {
   let auto = true, lastSwitch = performance.now(), presetStart = performance.now(), curName = null;
   let guard = true, maxHz = 0, slowSecs = 0, sixtySecs = 0, hintShown = false;
   const slowMarks = [];
-  let frozen = false, kitOpen = false;
+  let frozen = false;
   let bpm = 140;
   const savedToggles = store.get('am-toggles', null);
   const toggles = Object.assign({ auto: true, mood: true, phrase: true, drop: true, build: true, pulse: true, spark: true, acid: true, morph: true, tune: true }, savedToggles || {});
@@ -811,7 +780,6 @@ function analyzeEnvelopes(env, hopS) {
     return s === 'warten' || !s ? 'intro' : s;
   }
   function nextPreset(blend = 2.7, tg) {
-    if (kitOpen && !broken.has(curName)) return;             // Baukasten offen: keine Auto-Wechsel
     if (blend > 0 && blender && toggles.mood) {              // Übergangsdauer nach Klang: laut/hart = kurz, ruhig = lang
       const a = blender.suggestDuration() / 1000;
       blend = Math.min(a, Math.max(blend, 1.2));
@@ -823,107 +791,13 @@ function analyzeEnvelopes(env, hopS) {
     }
   }
   function goNext() {
-    if (kitOpen) closeKit();
     if (histPos < hist.length - 1) { histPos++; loadByName(hist[histPos], 1.5, false); }
     else nextPreset(1.5);
   }
-  function goPrev() { if (kitOpen) closeKit(); if (histPos > 0) { histPos--; loadByName(hist[histPos], 1.5, false); } }
+  function goPrev() { if (histPos > 0) { histPos--; loadByName(hist[histPos], 1.5, false); } }
   $('next').addEventListener('click', goNext);
   $('prev').addEventListener('click', goPrev);
   $('auto').addEventListener('click', () => { auto = !auto; $('auto').classList.toggle('hot', auto); lastSwitch = performance.now(); });
-
-  // ===== Preset-Baukasten: Regler → fertiges Preset, sofort im Bild; speichern = eigenes Preset =====
-  let kitP = KIT ? KIT.norm(store.get('am-kit-last', null)) : null, kitSel = '';
-  const SLD = [['kick', 'Kick', 0, 2, 0.05], ['acid', '303', 0, 2, 0.05], ['hats', 'Hats', 0, 2, 0.05], ['speed', 'Tempo', 0.2, 2.5, 0.05],
-    ['spin', 'Drehung', -1, 1, 0.05], ['trail', 'Nachleuchten', 0.8, 0.97, 0.01], ['pump', 'Pump', 0, 2, 0.05], ['glow', 'Glühen', 0, 1.5, 0.05]];
-  const kitFmt = (k, v) => k === 'trail' ? Math.round((v - 0.8) / 0.17 * 100) + ' %' : (+v).toFixed(2);
-  function kitBtns(host, items, key, cls, label) {
-    items.forEach((it, i) => {
-      const b = document.createElement('button'); b.type = 'button'; b.dataset.v = i; if (cls) b.className = cls;
-      if (label) b.textContent = label(it, i); if (it && it.br) { const c = it.rainbow ? 'conic-gradient(#f33,#fc3,#3f6,#3cf,#a3f,#f33)' : 'rgb(' + it.br.map(x => Math.round(x * 255)).join(',') + ')'; b.style.background = c; b.setAttribute('aria-label', it.n); b.title = it.n; }
-      b.addEventListener('click', () => { kitP[key] = key === 'segs' ? KIT.SEGS[i] : i; kitSync(); kitApply(0.4); });
-      host.appendChild(b);
-    });
-  }
-  function kitSync() {
-    const mark = (host, idx) => [...host.children].forEach((b, i) => { b.classList.toggle('hot', i === idx); b.setAttribute('aria-pressed', i === idx ? 'true' : 'false'); });
-    mark($('kitForms'), kitP.form); mark($('kitPals'), kitP.pal); mark($('kitSegs'), KIT.SEGS.indexOf(kitP.segs));
-    SLD.forEach(([k]) => { $('kit-' + k).value = kitP[k]; $('kitO-' + k).textContent = kitFmt(k, kitP[k]); });
-    $('kitDel').disabled = !kitSel; $('kitSave').textContent = kitSel ? '💾 Überschreiben' : '💾 Speichern';
-    $('kitSel').value = kitSel;
-  }
-  function kitRefreshSel() {
-    const s = $('kitSel'); s.textContent = '';
-    const o0 = document.createElement('option'); o0.value = ''; o0.textContent = kitSaved.length ? 'Meine Presets (' + kitSaved.length + ') …' : 'Noch keine eigenen Presets'; s.appendChild(o0);
-    kitSaved.forEach(x => { const o = document.createElement('option'); o.value = x.name; o.textContent = x.name.replace('Eigen · ', ''); s.appendChild(o); });
-    s.value = kitSel;
-  }
-  function kitApply(blend) {
-    if (!viz) { say('Der Visualizer läuft noch nicht. Tipp kurz aufs Bild und versuch es nochmal.'); return; }
-    try { presets[KIT_PREV] = KIT.build(kitP); } catch (e) { err('Baukasten: ' + e.message); say('Baukasten-Fehler: ' + e.message); return; }
-    broken.delete(KIT_PREV); tunedCache.delete(KIT_PREV);
-    if (loadByName(KIT_PREV, blend === undefined ? 0.4 : blend, curName !== KIT_PREV)) say('');
-    else { broken.delete(KIT_PREV); say('Diese Mischung lässt sich auf dem Gerät nicht laden. Probier eine andere Form oder Farbe.'); }
-    store.set('am-kit-last', kitP);
-  }
-  function openKit() {
-    kitOpen = true; $('kit').hidden = false; $('hud').classList.add('kitopen'); $('kitBtn').setAttribute('aria-expanded', 'true'); $('kitBtn').classList.add('hot');
-    if (!$('fine').hidden) $('fineBtn').click();
-    kitSync(); kitApply(0.6);
-  }
-  function closeKit() {
-    kitOpen = false; $('kit').hidden = true; $('hud').classList.remove('kitopen'); $('kitBtn').setAttribute('aria-expanded', 'false'); $('kitBtn').classList.remove('hot');
-    lastSwitch = performance.now();
-  }
-  if (KIT) {
-    kitBtns($('kitForms'), KIT.FORMS, 'form', '', n => n);
-    kitBtns($('kitPals'), KIT.PALS, 'pal', 'sw');
-    kitBtns($('kitSegs'), KIT.SEGS, 'segs', '', n => n === 1 ? 'Aus' : String(n));
-    SLD.forEach(([k, lbl, mn, mx, st]) => {
-      const l = document.createElement('label'); l.className = 'slider'; l.htmlFor = 'kit-' + k; l.append(lbl);
-      const inp = document.createElement('input'); inp.type = 'range'; inp.id = 'kit-' + k; inp.min = mn; inp.max = mx; inp.step = st;
-      const out = document.createElement('output'); out.id = 'kitO-' + k;
-      inp.addEventListener('input', () => { kitP[k] = +inp.value; out.textContent = kitFmt(k, kitP[k]); });
-      inp.addEventListener('change', () => { kitP[k] = +inp.value; kitApply(0.3); });
-      l.append(inp, out); $('kitSliders').appendChild(l);
-    });
-    kitRefreshSel(); kitSync();
-    $('kitBtn').addEventListener('click', () => { if (kitOpen) closeKit(); else openKit(); });
-    $('kitRand').addEventListener('click', () => { kitP = KIT.randomParams(); kitSel = ''; kitSync(); kitApply(0.5); });
-    $('kitSel').addEventListener('change', () => {
-      const s = kitSaved.find(x => x.name === $('kitSel').value);
-      kitSel = s ? s.name : ''; if (s) { kitP = KIT.norm(s.p); }
-      kitSync(); if (s) kitApply(0.5);
-    });
-    const kitSave = asNew => {
-      const P = KIT.norm(kitP);
-      let s = !asNew && kitSel ? kitSaved.find(x => x.name === kitSel) : null;
-      if (s) { s.p = P; }
-      else {
-        const base = 'Eigen · ' + KIT.label(P); let name = base, i = 2; while (presets[name]) name = base + ' ' + i++;
-        s = { name, p: P }; kitSaved.push(s); names.push(name); ACID.add(name);
-      }
-      presets[s.name] = KIT.build(P); tunedCache.delete(s.name);
-      favs.add(s.name); store.set('am-favs', [...favs]);
-      store.set('am-kit-v1', kitSaved); kitSel = s.name; kitRefreshSel(); kitSync();
-      rea('Baukasten: gespeichert ' + s.name);
-      loadByName(s.name, 0.3, true);
-      say('Gespeichert als „' + s.name.replace('Eigen · ', '') + '“ und als Favorit markiert.');
-    };
-    $('kitSave').addEventListener('click', () => kitSave(false));
-    $('kitNew').addEventListener('click', () => kitSave(true));
-    $('kitDel').addEventListener('click', () => {
-      const s = kitSaved.find(x => x.name === kitSel); if (!s) return;
-      kitSaved.splice(kitSaved.indexOf(s), 1); delete presets[s.name]; ACID.delete(s.name); favs.delete(s.name); tunedCache.delete(s.name);
-      const ix = names.indexOf(s.name); if (ix >= 0) names.splice(ix, 1);
-      for (let i = hist.length - 1; i >= 0; i--) if (hist[i] === s.name) { hist.splice(i, 1); if (histPos >= i) histPos--; }
-      for (let i = recent.length - 1; i >= 0; i--) if (recent[i] === s.name) recent.splice(i, 1);
-      store.set('am-favs', [...favs]); store.set('am-kit-v1', kitSaved);
-      rea('Baukasten: gelöscht ' + s.name); kitSel = ''; kitRefreshSel(); kitSync();
-      if (curName === s.name) kitApply(0.3); else showFav();
-      say('Gelöscht.');
-    });
-  } else { $('kitBtn').hidden = true; }
 
   // Preset vermessen: Helligkeit, Sättigung, Farbton, Bewegung (nur bis genug Messungen da sind)
   function sampleFrame(t) {
@@ -1048,7 +922,7 @@ function analyzeEnvelopes(env, hopS) {
     });
   }
   $('fineBtn').addEventListener('click', () => {
-    const open = $('fine').hidden; if (open && kitOpen) closeKit(); $('fine').hidden = !open;
+    const open = $('fine').hidden; $('fine').hidden = !open;
     $('fineBtn').setAttribute('aria-expanded', String(open)); $('fineBtn').classList.toggle('hot', open);
   });
 
@@ -1451,7 +1325,7 @@ function analyzeEnvelopes(env, hopS) {
       } else {
         lastTapT = now;
         if (hud.classList.contains('off')) { hud.classList.remove('off'); hudWoke = now; hudWokeByTap = true; lastTouch = now; }   // sofort sichtbar
-        else { hudWokeByTap = false; tapTimer = setTimeout(() => { if (!$('fine').hidden) $('fineBtn').click(); else if (kitOpen) $('kitBtn').click(); else hud.classList.add('off'); }, 260); }
+        else { hudWokeByTap = false; tapTimer = setTimeout(() => { if (!$('fine').hidden) $('fineBtn').click(); else hud.classList.add('off'); }, 260); }
       }
     }
   });
@@ -1463,7 +1337,7 @@ function analyzeEnvelopes(env, hopS) {
   window.addEventListener('pointerdown', touched, true);
   window.addEventListener('input', touched, true);
   setInterval(() => {
-    if ((!audio.paused || micOn) && $('fine').hidden && !kitOpen && performance.now() - lastTouch > 12000) hud.classList.add('off');
+    if ((!audio.paused || micOn) && $('fine').hidden && performance.now() - lastTouch > 12000) hud.classList.add('off');
   }, 1000);
 
   // ===== Track-Scan =====
