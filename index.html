@@ -350,6 +350,10 @@ function analyzeEnvelopes(env, hopS) {
     bright: clamp((brightRatio - 0.02) / 0.2),
     acid: clamp(clamp((sw - 0.04) / 0.12) * 0.6 + clamp((md - 0.08) / 0.25) * 0.4)
   };
+  // Übergangslänge in ganzen Takten, vorab pro Abschnitt festgelegt: laute Grooves 2 Takte, ruhigere und Breaks/Intro/Outro 4 Takte.
+  // Kurze Abschnitte bekommen höchstens die Hälfte ihrer Länge, damit der Übergang im Abschnitt fertig wird.
+  const baseBars = { intro: 4, groove: mood.energy >= 0.65 ? 2 : 4, break: 4, buildup: 2, drop: 2, outro: 4 };
+  for (const s of sections) s.blendBars = Math.max(1, Math.min(baseBars[s.type] || 2, Math.floor((s.endBar - s.startBar) / 2) || 1));
   const drops = sections.filter(s => s.type === 'drop').length;
   return { grid, bpm, beatS, beat0: phase * hopS, barPhase, sections, mood, drops, duration: N * hopS };
 }
@@ -436,7 +440,7 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 22 · Stand wie Build 20 (Baukasten pausiert)';
+  const BUILD = 'Build 23 · Übergänge in ganzen Takten (aus der Analyse)';
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -779,8 +783,16 @@ function analyzeEnvelopes(env, hopS) {
     const s = scanActive() ? scanType : beat.state;
     return s === 'warten' || !s ? 'intro' : s;
   }
-  function nextPreset(blend = 2.7, tg) {
-    if (blend > 0 && blender && toggles.mood) {              // Übergangsdauer nach Klang: laut/hart = kurz, ruhig = lang
+  // Übergangsdauer in ganzen Takten: mit Scan aus der Analyse (pro Abschnitt), sonst aus dem Live-Tempo
+  let scanSec = null;
+  function blendSecs(type) {
+    const live = { intro: 2, groove: 2, break: 4, buildup: 2, drop: 2, outro: 4 };
+    let bars = live[type] || 2, beatS = 60 / bpm;
+    if (scanActive() && curAnalysis) { beatS = curAnalysis.beatS; if (scanSec && scanSec.blendBars) bars = scanSec.blendBars; }
+    return +(bars * 4 * beatS).toFixed(3);
+  }
+  function nextPreset(blend = 2.7, tg, exact) {
+    if (blend > 0 && !exact && blender && toggles.mood) {              // Übergangsdauer nach Klang: laut/hart = kurz, ruhig = lang
       const a = blender.suggestDuration() / 1000;
       blend = Math.min(a, Math.max(blend, 1.2));
     }
@@ -871,7 +883,7 @@ function analyzeEnvelopes(env, hopS) {
     }
     beatFrame(t);
     fxFrame(t);
-    if (auto && !frozen && !(toggles.phrase && engaged()) && t - lastSwitch > switchMs()) nextPreset(2.7);
+    if (auto && !frozen && !(toggles.phrase && engaged()) && t - lastSwitch > switchMs()) nextPreset(blendSecs('groove'), undefined, true);
   }
   function perSecond(fps, t) {
     $('fps').textContent = fps;
@@ -1158,7 +1170,7 @@ function analyzeEnvelopes(env, hopS) {
     if (!auto || frozen || !toggles.phrase) return;
     if (!(beat.state === 'groove' || beat.state === 'drop')) return;
     const since = beat.n - sectionBeat0;
-    if (since > 0 && since % PHRASE_BEATS === 0 && t - sectionChangeT > 8 * P) nextPreset(Math.min(2.7, 2 * P / 1000), moodTarget('groove'));
+    if (since > 0 && since % PHRASE_BEATS === 0 && t - sectionChangeT > 8 * P) nextPreset(blendSecs('groove'), moodTarget('groove'), true);
   }
 
   // Abschnittswechsel: hier passieren Schnitt, Blitz und Stimmungswechsel
@@ -1178,9 +1190,9 @@ function analyzeEnvelopes(env, hopS) {
     }
     if (!auto) return;
     if (!scanActive() && t - lastSwitch < 32 * P) { rea('Wechsel ausgelassen: letzter Wechsel weniger als 8 Takte her'); return; }
-    if (type === 'break' && (prev === 'groove' || prev === 'drop')) nextPreset(Math.min(4, 4 * P / 1000), moodTarget('break'));
-    else if (type === 'groove' && (prev === 'intro' || prev === 'warten')) nextPreset(Math.min(2.7, 2 * P / 1000), moodTarget('groove'));
-    else if (type === 'outro') nextPreset(Math.min(4, 4 * P / 1000), moodTarget('outro'));
+    if (type === 'break' && (prev === 'groove' || prev === 'drop')) nextPreset(blendSecs('break'), moodTarget('break'), true);
+    else if (type === 'groove' && (prev === 'intro' || prev === 'warten')) nextPreset(blendSecs('groove'), moodTarget('groove'), true);
+    else if (type === 'outro') nextPreset(blendSecs('outro'), moodTarget('outro'), true);
   }
 
   // ===== Scan-Modus: Ablauf kommt aus dem vorab analysierten Track =====
@@ -1195,6 +1207,7 @@ function analyzeEnvelopes(env, hopS) {
     const bi = Math.floor((ts - A.beat0) / A.beatS);
     beat.n = bi - A.barPhase;
     const s = sectionAt(A, ts);
+    scanSec = s;
     const type = s ? s.type : 'intro';
     const P = A.beatS * 1000;
     if (type !== scanType) {
@@ -1213,7 +1226,7 @@ function analyzeEnvelopes(env, hopS) {
       if (prevBi !== null && bi === prevBi + 1 && auto && !frozen && toggles.phrase && (type === 'groove' || type === 'drop')) {
         const since = bi - Math.round((s.t0 - A.beat0) / A.beatS);
         const rest = (s.t1 - ts) / A.beatS;
-        if (since > 0 && since % PHRASE_BEATS === 0 && rest >= MIN_REST_BEATS && t - sectionChangeT > 8 * P) nextPreset(Math.min(2.7, 2 * P / 1000), moodTarget('groove'));
+        if (since > 0 && since % PHRASE_BEATS === 0 && rest >= MIN_REST_BEATS && t - sectionChangeT > 8 * P) nextPreset(blendSecs('groove'), moodTarget('groove'), true);
       }
     }
   }
