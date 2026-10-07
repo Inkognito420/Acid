@@ -132,6 +132,7 @@ a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px sol
       <button id="t-pulse" type="button" class="hot">Kick-Puls</button>
       <button id="t-spark" type="button" class="hot">Hats &amp; Snares</button>
       <button id="t-acid" type="button" class="hot">Acid-Farbe</button>
+      <button id="t-bar" type="button" class="hot" title="Farbton springt auf jeder Takt-Eins ein Stück weiter: im Groove leicht, im Drop kräftig, im Break steht er">Takt-Farbe</button>
       <button id="t-tune" type="button" class="hot" title="Schwach reagierende Presets werden verstärkt, zu starke gedämpft (gilt ab dem nächsten Bildwechsel)">Reaktions-Angleich</button>
       <button id="t-morph" type="button" class="hot" title="Beim Bildwechsel verformt sich das Bild kurz mit dem Klang">Übergangs-Verformung</button>
     </div>
@@ -441,7 +442,7 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 26 · Leistungs-Protokoll (Wächter-Markierungen, fps alle 5 Minuten)';
+  const BUILD = 'Build 27 · Takt-Farbe (Farbton springt auf der Takt-Eins weiter)';
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -549,7 +550,7 @@ function analyzeEnvelopes(env, hopS) {
   let frozen = false;
   let bpm = 140;
   const savedToggles = store.get('am-toggles', null);
-  const toggles = Object.assign({ auto: true, mood: true, phrase: true, drop: true, build: true, pulse: true, spark: true, acid: true, morph: true, tune: true }, savedToggles || {});
+  const toggles = Object.assign({ auto: true, mood: true, phrase: true, drop: true, build: true, pulse: true, spark: true, acid: true, bar: true, morph: true, tune: true }, savedToggles || {});
   const reduceMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
   if (reduceMotion && !savedToggles) { toggles.pulse = false; toggles.spark = false; }
 
@@ -558,6 +559,15 @@ function analyzeEnvelopes(env, hopS) {
   const PHRASE_BEATS = 16 * 4;                     // Phrase = 16 Takte, wird ab Abschnittsbeginn gezählt, nicht mehr nach festem Zähler
   const MIN_REST_BEATS = 8 * 4;                    // kurz vor einem Abschnittsende kein Extra-Wechsel: der Wechsel kommt dann mit dem Abschnitt
   let kickGlow = 0, pulse = 0, flash = 0, build = 0, vign = 0, hue = 0, lastHue = 0;
+  // Takt-Farbe: eigener Farbton-Anteil, springt auf der Takt-Eins weiter (hue = Acid-Anteil, barHue = Takt-Anteil)
+  let barHue = 0, barHueTarget = 0, barSteps = 0;
+  const BAR_STEP = { groove: 20, drop: 45 };      // Grad pro Takt; Intro, Break, Build-up, Outro: Farbe bleibt stehen
+  function onBar(type) {
+    if (!toggles.bar || frozen) return;
+    const st = BAR_STEP[type] || 0; if (!st) return;
+    barHueTarget += st; barSteps++;
+    if (barSteps % 32 === 1) rea('Takt-Farbe: +' + st + '° auf der Eins (' + type + '), jetzt ' + Math.round(barHueTarget % 360) + '°');
+  }
   let hiFast = 0, hiAtBreak = 0, buildStart = 0;
   let rFast = 0, rSlow = 0, acidAct = 0;
   const live = { bright: 0.5, acid: 0, energy: 0.5, seen: 0 };
@@ -632,9 +642,11 @@ function analyzeEnvelopes(env, hopS) {
     applyFilter(true);
   }
   function applyFilter(force) {
-    if (!force && Math.abs(hue - lastHue) < 0.7) return;
-    lastHue = hue;
-    const h = Math.abs(hue) >= 0.7 ? ' hue-rotate(' + hue.toFixed(1) + 'deg)' : '';
+    const tot = hue + barHue;
+    if (!force && Math.abs(tot - lastHue) < 0.7) return;
+    lastHue = tot;
+    const a = ((tot % 360) + 360) % 360, hh = a > 180 ? a - 360 : a;
+    const h = Math.abs(hh) >= 0.7 ? ' hue-rotate(' + hh.toFixed(1) + 'deg)' : '';
     canvas.style.filter = (filterBase + h).trim();
   }
   colorEl.addEventListener('change', () => { store.set('am-color', colorEl.value); applyColor(); });
@@ -951,7 +963,7 @@ function analyzeEnvelopes(env, hopS) {
   }
 
   // ===== Schalter im Sound-Menü =====
-  const togIds = { auto: 't-auto', mood: 't-mood', phrase: 't-phrase', drop: 't-drop', build: 't-build', pulse: 't-pulse', spark: 't-spark', acid: 't-acid', morph: 't-morph', tune: 't-tune' };
+  const togIds = { auto: 't-auto', mood: 't-mood', phrase: 't-phrase', drop: 't-drop', build: 't-build', pulse: 't-pulse', spark: 't-spark', acid: 't-acid', bar: 't-bar', morph: 't-morph', tune: 't-tune' };
   for (const k in togIds) {
     const el = $(togIds[k]);
     el.classList.toggle('hot', toggles[k]);
@@ -1155,7 +1167,7 @@ function analyzeEnvelopes(env, hopS) {
 
   function liveFrame(t) {
     const P = 60000 / bpm;
-    while (t - beat.t >= P) { beat.t += P; beat.n++; onBeat(t, P); }
+    while (t - beat.t >= P) { beat.t += P; beat.n++; if (beat.n % 4 === 0) onBar(beat.state); onBeat(t, P); }
     const sinceKick = t - beat.lastKick;
     if (beat.state === 'groove' && sinceKick > 8 * P) { beat.breakStart = beat.lastKick; beat.kickStreak = 0; hiAtBreak = hiFast; setLiveState('break', t, P); }
     if (beat.state === 'break' && t - beat.breakStart > 16 * P && hiAtBreak > 0 && hiFast > hiAtBreak * 1.5) { buildStart = t; setLiveState('buildup', t, P); }
@@ -1248,7 +1260,7 @@ function analyzeEnvelopes(env, hopS) {
       if (prevBi !== null && bi === prevBi + 1 && (type === 'groove' || type === 'drop' || type === 'buildup') && !audio.paused) {
         const sinceDrop = type === 'drop' ? 1 : 0;
         kickGlow = 1; pulse = Math.max(pulse, type === 'drop' ? 0.05 : type === 'buildup' ? 0.02 + 0.03 * build : 0.035);
-        if (beat.n % 4 === 0) pulse += 0.01 * (1 + sinceDrop);   // Takt-Eins etwas stärker
+        if (beat.n % 4 === 0) { pulse += 0.01 * (1 + sinceDrop); onBar(type); }   // Takt-Eins etwas stärker, Farbe springt weiter
       }
       if (prevBi !== null && bi === prevBi + 1 && auto && !frozen && toggles.phrase && (type === 'groove' || type === 'drop')) {
         const since = bi - Math.round((s.t0 - A.beat0) / A.beatS);
@@ -1299,6 +1311,9 @@ function analyzeEnvelopes(env, hopS) {
     const tr = (tx || sc !== 1) ? tx + 'scale(' + sc.toFixed(4) + ')' : '';
     if (tr !== lastTr) { canvas.style.transform = tr; lastTr = tr; }
     flashEl.style.opacity = flash > 0.01 ? flash.toFixed(3) : '0';
+    if (!toggles.bar) barHueTarget = barHue;      // ausgeschaltet: Farbe bleibt, wo sie ist
+    barHue = ema(barHue, barHueTarget, dt, 90);    // kurzer Sprung (ca. 0,2 s), kein langes Gleiten
+    if (barHueTarget > 3600) { barHueTarget -= 3600; barHue -= 3600; lastHue -= 3600; }
     applyFilter(false);
     const cur = beat.state === 'warten' && !scanActive() ? -1 : ((beat.n % 4) + 4) % 4;
     for (let i = 0; i < 4; i++) { dots[i].classList.toggle('on', i === cur); dots[i].classList.toggle('kick', i === cur && kickGlow > 0.3); }
