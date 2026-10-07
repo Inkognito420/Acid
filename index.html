@@ -166,6 +166,7 @@ a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px sol
 <script src="audio-reactive-controller.js"></script>
 <script src="adaptive-preset-blender.js"></script>
 <script src="acid-presets.js"></script>
+<script src="acid-profile.js"></script>
 <script>
 // ===== Track-Analyse (reine Rechenfunktion, ohne Browser-Abhängigkeiten) =====
 // env: {low, m1, m2, hi, full} als Float32Arrays mit RMS pro Frame, hopS: Sekunden pro Frame
@@ -440,7 +441,7 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 24 · zwei Bild-Presets aus Emmos Makro-Clips (Gold-Staub, Glaskugel)';
+  const BUILD = 'Build 25 · alle Presets vorab vermessen (Stimmungs-Auswahl kennt jedes Preset ab Start)';
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -640,6 +641,19 @@ function analyzeEnvelopes(env, hopS) {
 
   // ===== Presets: vermessen und nach Stimmung auswählen =====
   const profiles = store.get('am-profiles-v1', {}) || {};
+  // Startwerte aus der Vorab-Messung (acid-profile.js): so kennt die Auswahl jedes Preset ab dem ersten Start.
+  // Zählt wie 6 Messungen; die Live-Messung am Handy verfeinert die Werte danach weiter.
+  try {
+    const base = window.ACID_PROFILES || {};
+    let seeded = 0;
+    for (const n in base) {
+      const P = profiles[n], B = base[n];
+      if (P && P.n >= 6 && P.nm >= 4) continue;
+      profiles[n] = { b: B[0], s: B[1], hx: B[2], hy: B[3], m: B[4], n: 6, nm: 4 }; seeded++;
+    }
+    window.__acidSeeded = seeded;
+    rea('Profile: ' + seeded + ' Presets aus der Vorab-Messung übernommen, ' + Object.keys(profiles).length + ' bekannt');
+  } catch (e) {}
   let profDirty = false, lastProfSave = 0, lastSample = 0, prevLuma = null;
   const samp = document.createElement('canvas'); samp.width = 32; samp.height = 18;
   const sctx = samp.getContext('2d', { willReadFrequently: true });
