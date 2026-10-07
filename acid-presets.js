@@ -118,5 +118,52 @@
  }`
   };
 
+  // ---------- 4) + 5) Bild-Presets aus Emmos Makro-Clips: Standbild, das auf den Ton reagiert ----------
+  // Bild kommt als Textur (window.ACID_IMAGES, index.html lädt sie per loadExtraImages).
+  // Kick = Zoom-Puls + Aufhellen, 303-Linie = Farbe/Wellenverzerrung, Hats = Farbsäume + Glitzer.
+  const imgPreset = (img, tintA, tintB, hueMix) => ({
+    baseVals: { rating: 5, gammaadj: 1.3, decay: 0.8, zoom: 1.0, wrap: 0, warp: 0, echo_zoom: 1, echo_alpha: 0, wave_a: 0, ob_a: 0, ib_a: 0, mv_a: 0 },
+    init_eqs_str: 'a.kk=0;a.ac=0;a.hh=0;a.ph=0;a.tp=0;a.dt=0;a.q1=0;a.q2=0;a.q3=0;a.q4=0;a.q5=0;',
+    frame_eqs_str:
+      'a.dt=Math.min(.1,Math.max(0,a.time-a.tp));a.tp=a.time;' +
+      'a.kk=Math.max(a.kk*.82,Math.min(1.6,Math.max(0,a.bass-1.05)));' +
+      'a.ac=a.ac*.88+.12*Math.min(2,Math.max(0,a.mid-.9));' +
+      'a.hh=Math.max(a.hh*.75,Math.min(1.5,Math.max(0,a.treb-1.05)));' +
+      'a.ph+=a.dt*(.12+.9*a.kk+.4*a.ac);' +
+      'a.q1=a.kk;a.q2=a.ph;a.q3=a.ac;a.q5=a.hh;',
+    pixel_eqs_str: '',
+    shapes: none(4),
+    waves: noWave(4),
+    warp: '',
+    comp: ` uniform sampler2D sampler_${img};
+ shader_body {
+  vec2 p = uv - 0.5;
+  float r = length(p);
+  float zm = 1.0 - 0.05 * q1 - 0.02;
+  vec2 w = vec2(sin(uv.y * 9.0 + q2 * 2.0), cos(uv.x * 9.0 - q2 * 1.7)) * 0.006 * (0.3 + q3);
+  vec2 puv = p * zm + 0.5 + w + vec2(sin(q2 * 0.35), cos(q2 * 0.27)) * 0.012;
+  vec2 ab = p * (0.004 + 0.016 * q5);
+  vec3 c;
+  c.r = texture(sampler_${img}, puv + ab).r;
+  c.g = texture(sampler_${img}, puv).g;
+  c.b = texture(sampler_${img}, puv - ab).b;
+  float l = dot(c, vec3(0.3, 0.59, 0.11));
+  vec3 tint = mix(vec3(${tintA}), vec3(${tintB}), clamp(q3 * ${hueMix}, 0.0, 1.0));
+  c = mix(c, c * tint, 0.55 * clamp(q3, 0.0, 1.0));
+  c += c * l * 1.6 * q1;
+  float sp = step(0.93, fract(sin(dot(floor(uv * 90.0 + floor(time * 14.0)), vec2(12.9898, 78.233))) * 43758.5453));
+  c += tint * sp * l * 1.5 * q5;
+  float vg = 1.0 - 0.6 * r * r * 1.6;
+  c *= (0.85 + 0.55 * q1) * vg;
+  ret = c;
+ }`
+  });
+  P['Acid · Gold-Staub'] = imgPreset('acidgold', '1.0, 1.0, 1.0', '1.5, 0.5, 1.4', 0.9);
+  P['Acid · Glaskugel'] = imgPreset('acidkugel', '1.0, 1.0, 1.0', '1.5, 0.9, 0.5', 0.9);
+  window.ACID_IMAGES = {
+    acidgold:  { data: 'acid-bild-gold.jpg',  width: 1280, height: 720 },
+    acidkugel: { data: 'acid-bild-kugel.jpg', width: 1280, height: 720 }
+  };
+
   window.ACID_PRESETS = P;
 })();

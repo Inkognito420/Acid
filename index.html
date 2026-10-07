@@ -440,7 +440,7 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 23 · Übergänge in ganzen Takten (aus der Analyse)';
+  const BUILD = 'Build 24 · zwei Bild-Presets aus Emmos Makro-Clips (Gold-Staub, Glaskugel)';
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -646,7 +646,7 @@ function analyzeEnvelopes(env, hopS) {
   const hist = []; let histPos = -1; const recent = [];
 
   let morphOn = false;
-  Object.assign(REACT, {"Acid \u00b7 Tunnel":[0.96,0.18,0.01],"Acid \u00b7 Kick-Gitter":[1.53,0.32,0.06],"Acid \u00b7 Strobe-Ringe":[0.32,0.13,0.2]});
+  Object.assign(REACT, {"Acid \u00b7 Tunnel":[0.96,0.18,0.01],"Acid \u00b7 Kick-Gitter":[1.53,0.32,0.06],"Acid \u00b7 Strobe-Ringe":[0.32,0.13,0.2],"Acid \u00b7 Gold-Staub":[1.46,0.89,0.63],"Acid \u00b7 Glaskugel":[0.97,0.88,0.67]});
   // Presets, die in der Messung auf keinen Ton reagiert haben, kommen in der Auswahl nicht mehr vor
   const DEAD = new Set(Object.keys(REACT).filter(n => REACT[n][0] + REACT[n][1] + REACT[n][2] < 0.05));
   // Reaktions-Angleich: schwach reagierende Presets bekommen am Anfang ihrer Formeln eine Zeile, die Bass/Mitten/Höhen stärker auslenkt,
@@ -852,6 +852,7 @@ function analyzeEnvelopes(env, hopS) {
     try { viz = BC.createVisualizer(ctx, canvas, { width: W, height: H, pixelRatio: 1, textureRatio: 1 }); }
     catch (e) { viz = null; say('WebGL startet nicht. Schließ andere Tabs und lade die Seite neu.'); return false; }
     try { viz.connectAudio(delayNode); } catch (e) {}
+    try { if (window.ACID_IMAGES) viz.loadExtraImages(window.ACID_IMAGES); } catch (e) {}   // Bilder für die Bild-Presets (acid-presets.js)
     applyColor();
     nextPreset(0);
     return true;
