@@ -22,6 +22,8 @@ html,body{height:100%;background:var(--bg);color:var(--fg);overflow:hidden;font-
 #sh{position:fixed;inset:0;width:100%;height:100%;display:block;pointer-events:none;opacity:0;transform-origin:50% 50%;will-change:transform,opacity}
 #fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
 #flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;mix-blend-mode:screen}
+#pname{position:fixed;top:calc(8px + env(safe-area-inset-top,0px));right:calc(10px + env(safe-area-inset-right,0px));max-width:62vw;text-align:right;font:500 11px/1.3 var(--mono);color:#fff;background:rgba(0,0,0,.55);padding:4px 8px;border-radius:6px;pointer-events:none;z-index:5;word-break:break-word;letter-spacing:.01em}
+#pname:empty,#pname.off{display:none}
 #hud{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));
   background:linear-gradient(to top,var(--panel) 70%,transparent);display:flex;flex-direction:column;gap:10px;transition:opacity .35s}
 @media (orientation:landscape){#hud{max-height:100dvh;overflow-y:auto;overscroll-behavior:contain}}
@@ -82,6 +84,7 @@ a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px sol
 <div id="intro"><div><h1>ACID<br><span>MILKDROP</span></h1><p>Tracks aus der Dateien-App aufs Bild ziehen, gern mehrere auf einmal. Wischen: nächstes Preset · Halten: Freeze · Doppeltipp: Schnitt mit Blitz · Tippen: Leiste aus und an.</p></div></div>
 
 <div id="flash"></div>
+<div id="pname"></div>
 <div id="drop" hidden>Tracks hier loslassen</div>
 
 <div id="hud">
@@ -137,6 +140,7 @@ a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px sol
       <button id="t-bar" type="button" class="hot" title="Farbton springt auf jeder Takt-Eins ein Stück weiter: im Groove leicht, im Drop kräftig, im Break steht er">Takt-Farbe</button>
       <button id="t-tune" type="button" class="hot" title="Schwach reagierende Presets werden verstärkt, zu starke gedämpft (gilt ab dem nächsten Bildwechsel)">Reaktions-Angleich</button>
       <button id="t-morph" type="button" class="hot" title="Beim Bildwechsel verformt sich das Bild kurz mit dem Klang">Übergangs-Verformung</button>
+      <button id="t-name" type="button" class="hot" title="Name des laufenden Presets oder Shaders oben rechts im Bild (auch bei ausgeblendeter Leiste, damit er auf Screenshots zu sehen ist)">Name oben rechts</button>
       <button id="t-own" type="button" class="hot" title="Ab und zu kommt einer der eigenen Shader (Peak Time, Driving, Acid) statt eines Milkdrop-Presets, passend zum Abschnitt">Eigene Shader</button>
     </div>
     <div class="row">
@@ -446,7 +450,7 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 31 · Eigene Shader schneller (Leuchten halb, Rauschen aus Bild, vorab vorbereitet)';
+  const BUILD = 'Build 32 · Name oben rechts, Favoriten häufiger (4 von 10)';
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -554,7 +558,7 @@ function analyzeEnvelopes(env, hopS) {
   let frozen = false;
   let bpm = 140;
   const savedToggles = store.get('am-toggles', null);
-  const toggles = Object.assign({ auto: true, mood: true, phrase: true, drop: true, build: true, pulse: true, spark: true, acid: true, bar: true, morph: true, tune: true, own: true }, savedToggles || {});
+  const toggles = Object.assign({ auto: true, mood: true, phrase: true, drop: true, build: true, pulse: true, spark: true, acid: true, bar: true, morph: true, tune: true, own: true, name: true }, savedToggles || {});
   const reduceMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
   if (reduceMotion && !savedToggles) { toggles.pulse = false; toggles.spark = false; }
 
@@ -780,7 +784,8 @@ function analyzeEnvelopes(env, hopS) {
   }
   // Favoriten: Stern-Knopf merkt sich Presets (bleibt im Browser gespeichert); die Auswahl nimmt sie öfter
   const favs = new Set(store.get('am-favs', []).filter(n => typeof n === 'string'));
-  function showFav() { const on = favs.has(curName); const b = $('fav'); b.textContent = on ? '★' : '☆'; b.classList.toggle('hot', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+  function showName() { const el = $('pname'); if (!el) return; el.classList.toggle('off', !toggles.name); el.textContent = curName ? (favs.has(curName) ? '★ ' : '') + curName : ''; }
+  function showFav() { showName(); const on = favs.has(curName); const b = $('fav'); b.textContent = on ? '★' : '☆'; b.classList.toggle('hot', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
   $('fav').addEventListener('click', () => {
     if (!curName) return;
     if (favs.has(curName)) { favs.delete(curName); rea('Favorit entfernt: ' + curName); } else { favs.add(curName); rea('Favorit: ' + curName); }
@@ -828,9 +833,9 @@ function analyzeEnvelopes(env, hopS) {
   let lastFitInfo = '';
   function pickPreset(tg) {
     const sv = toggles.mood ? soundTarget() : null;
-    // Favoriten (ca. 30 %) und eigene Acid-Presets (ca. 12 %) kommen bevorzugt dran, passend zum Klang gewählt
+    // Favoriten (ca. 40 %) und eigene Acid-Presets (ca. 12 %) kommen bevorzugt dran, passend zum Klang gewählt
     const lastFew = recent.slice(-6), pool = (set, minLeft) => { const a = []; for (const n of set) if (presets[n] && usable(n) && n !== curName && !lastFew.includes(n)) a.push(n); return a.length >= minLeft ? a : []; };
-    for (const [set, chance, tag] of [[favs, 0.3, 'Favorit'], [ACID, 0.12, 'Acid-Preset']]) {
+    for (const [set, chance, tag] of [[favs, 0.4, 'Favorit'], [ACID, 0.12, 'Acid-Preset']]) {
       if (Math.random() >= chance) continue;
       const a = pool(set, 1); if (!a.length) continue;
       let best = null, bf = -9;
@@ -1061,13 +1066,14 @@ function analyzeEnvelopes(env, hopS) {
   }
 
   // ===== Schalter im Sound-Menü =====
-  const togIds = { auto: 't-auto', mood: 't-mood', phrase: 't-phrase', drop: 't-drop', build: 't-build', pulse: 't-pulse', spark: 't-spark', acid: 't-acid', bar: 't-bar', morph: 't-morph', tune: 't-tune', own: 't-own' };
+  const togIds = { auto: 't-auto', mood: 't-mood', phrase: 't-phrase', drop: 't-drop', build: 't-build', pulse: 't-pulse', spark: 't-spark', acid: 't-acid', bar: 't-bar', morph: 't-morph', tune: 't-tune', own: 't-own', name: 't-name' };
   for (const k in togIds) {
     const el = $(togIds[k]);
     el.classList.toggle('hot', toggles[k]);
     el.addEventListener('click', () => {
       toggles[k] = !toggles[k]; el.classList.toggle('hot', toggles[k]); store.set('am-toggles', toggles);
       if (k === 'phrase') lastSwitch = performance.now();
+      if (k === 'name') showName();
       if (k === 'own' && !toggles.own && shCur) nextPreset(1.5);
     });
   }
