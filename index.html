@@ -529,8 +529,8 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 34 · Mitschreiben (Wechsel, Sterne, Track-Steckbrief) und Sichern/Laden';
-  const BUILD_NO = 34;
+  const BUILD = 'Build 35 · Lastbremse für schwere Favoriten, Pause ohne Farbsprung';
+  const BUILD_NO = 35;
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -631,6 +631,9 @@ function analyzeEnvelopes(env, hopS) {
 
   // ===== Zustand =====
   let viz = null, srcNode = null, fileNode = null, W = 0, H = 0, fxScale = 1;
+  // Lastbremse (Build 35): schwere Favoriten laufen in kleinerer Auflösung statt gesperrt zu werden. Stufe 0 = volle Auflösung.
+  const BRAKE_STEPS = [1, 0.8, 0.65, 0.5];
+  let curStep = 0;
   let micOn = false, micStream = null, micNode = null, micGainSaved = 1;
   let auto = true, lastSwitch = performance.now(), presetStart = performance.now(), curName = null;
   let guard = true, maxHz = 0, slowSecs = 0, sixtySecs = 0, hintShown = false;
@@ -860,6 +863,7 @@ function analyzeEnvelopes(env, hopS) {
     if (q === '2k') scale = Math.min(dpr, 2560 / long);
     else if (q === '1080') scale = Math.min(dpr, 1920 / long);
     else if (q === '720') scale = Math.min(dpr, 1280 / long);
+    scale *= BRAKE_STEPS[curStep] || 1;
     return [Math.max(2, Math.round(cw * scale)), Math.max(2, Math.round(ch * scale)), cw, ch, dpr];
   }
   function resize() {
@@ -969,7 +973,7 @@ function analyzeEnvelopes(env, hopS) {
   // Alles bleibt im Browser (localStorage), nichts wird gesendet. „Sichern/Laden“ gleicht Safari und Icon ab.
   // Anlass-Buchstaben (Start und Ende eines Laufs): i Grafik neu gestartet, a unbestimmt, t Zeitgeber, f Phrase, s Abschnittswechsel,
   //   n Wischen weiter, p Wischen zurück, d Doppeltipp (Schnitt), g Wächter/Fehler (kein Geschmackssignal), x Einstellung, k Track-/Quellenwechsel, h Seite im Hintergrund.
-  // Flags: 1 Stern gesetzt, 2 gehalten (Freeze), 4 Stern entfernt, 8 eigener Shader, 16 war Favorit, 32 Scan aktiv, 64 Mikro.
+  // Flags: 1 Stern gesetzt, 2 gehalten (Freeze), 4 Stern entfernt, 8 eigener Shader, 16 war Favorit, 32 Scan aktiv, 64 Mikro, 128 Lastbremse (Auflösung verkleinert, ab Build 35).
   const JR_KEY = 'am-journal-v1', JR_RUNS = 2500, JR_TRACKS = 80, JR_SESS = 120;
   const JR_COLS = ['ts', 'name', 'dur', 'start', 'end', 'sec', 'flags', 'track', 'pos', 'kick', 'acid', 'hat', 'bright', 'energy', 'acidMood', 'bpm', 'touches', 'sinceTouch', 'freeze'];
   const SEC1 = { intro: 'i', groove: 'g', break: 'b', buildup: 'u', drop: 'd', outro: 'o' };
@@ -1049,7 +1053,7 @@ function analyzeEnvelopes(env, hopS) {
     const sv = soundTarget();
     JR.run = {
       ts: Math.floor(Date.now() / 1000), name, act: 0, fz: 0, tc: 0, st: why || 'a', sec: SEC1[sectionKey()] || 'g',
-      fl: (SH[name] ? 8 : 0) | (favs.has(name) ? 16 : 0) | (scanActive() ? 32 : 0) | (micOn ? 64 : 0),
+      fl: (SH[name] ? 8 : 0) | (favs.has(name) ? 16 : 0) | (scanActive() ? 32 : 0) | (micOn ? 64 : 0) | (curStep && !SH[name] ? 128 : 0),
       tk: micOn ? 'mic' : (curFile ? jrTid(curFile) : ''), pos: micOn || !curFile ? -1 : Math.round(audio.currentTime),
       v: sv ? sv.map(x => Math.round(x * 100)) : null, m: jrPct3(trackMood()), bpm
     };
@@ -1268,10 +1272,46 @@ function analyzeEnvelopes(env, hopS) {
     rea('Mitschrift geleert (Sterne und vermessene Presets bleiben)');
   });
   if (/[?&]debug\b/.test(location.search)) window.__DATA = { dPack, dParse, dMerge, dShow, dSettings, slimProfiles };   // nur zum Testen
+
+  // ===== Lastbremse (Build 35) =====
+  // Ein Favorit (oder eigenes Acid-Preset), der bei voller Auflösung unter 52 fps fällt, wird nicht mehr gesperrt, sondern läuft eine Stufe kleiner
+  // (80, 65, 50 %). Butterchurn rechnet beim Ändern der Größe das aktuelle Bild um, es flackert nichts. Die Stufe wird je Preset 3 Tage gemerkt
+  // (das Handy kann warm gewesen sein, danach wird neu geprüft). Reicht auch 50 % nicht, sperrt der Wächter wie bisher.
+  const BRAKE_KEY = 'am-brake-v1', BRAKE_TTL = 3 * 86400;
+  const brake = {};
+  { const b = store.get(BRAKE_KEY, {}), now = Date.now() / 1000;
+    if (b && typeof b === 'object') for (const k in b) { const e = b[k]; if (e && e.s >= 1 && e.s < BRAKE_STEPS.length && e.t > now - BRAKE_TTL) brake[k] = { s: e.s | 0, t: e.t | 0 }; } }
+  let brakeUntil = 0, liveTicks = 0;                     // liveTicks: nur für den Test (zählt Schläge im Live-Raster)
+  const fpsHist = [];
+  const brakeWant = n => (guard && !SH[n] && brake[n]) ? brake[n].s : 0;
+  function brakeApply(n) {
+    if (SH[n]) return;                                  // eigene Shader haben ihre eigene (halbe) Fläche, Milkdrop steht dann still
+    const want = brakeWant(n);
+    if (want === curStep) return;
+    curStep = want; resize();
+    rea('Auflösung: ' + W + '×' + H + (want ? ' (Lastbremse Stufe ' + want + ', ' + Math.round(BRAKE_STEPS[want] * 100) + ' %)' : ' (voll)'));
+  }
+  // Schafft das Handy gerade überhaupt nichts über 40 fps (Stromsparmodus, heiß)? Dann liegt es nicht am Preset: nicht verkleinern.
+  const brakeCapped = t => { let n = 0, mx = 0; for (const h of fpsHist) if (t - h[0] <= 45000) { n++; if (h[1] > mx) mx = h[1]; } return n >= 20 && mx < 40; };
+  function brakeTry(n, fps, t) {
+    if (SH[n] || !(favs.has(n) || ACID.has(n))) return false;          // nur Favoriten und eigene Acid-Presets, alles andere wird wie bisher übersprungen
+    if (brakeCapped(t)) return false;
+    const s = brake[n] ? brake[n].s : 0;
+    if (s >= BRAKE_STEPS.length - 1) return false;                      // auch die kleinste Stufe reicht nicht: dann sperren
+    brake[n] = { s: s + 1, t: Math.floor(Date.now() / 1000) }; store.set(BRAKE_KEY, brake);
+    perf.marked++;
+    erg('Lastbremse: ' + n + ' zu langsam (' + fps + ' fps) nach ' + minSince(t) + ' → Stufe ' + (s + 1) + ' (' + Math.round(BRAKE_STEPS[s + 1] * 100) + ' %)');
+    slowMarks.push(t); while (slowMarks.length && t - slowMarks[0] > 60000) slowMarks.shift();
+    brakeApply(n); brakeUntil = t + 3500;
+    if (JR.run) JR.run.fl |= 128;
+    return true;
+  }
+  if (/[?&]debug\b/.test(location.search)) window.__BRAKE = { brake, brakeTry, brakeApply, fpsHist, perSecond, slow, loadByName, get step() { return curStep; }, get ticks() { return liveTicks; }, get guard() { return guard; }, set brakeUntil(v) { brakeUntil = v; } };   // nur zum Testen
   function usable(n) { return !broken.has(n) && !DEAD.has(n) && !(guard && slow.has(n)); }
   function loadByName(n, blend, pushHist = true, why = 'a') {
     rea('Preset: ' + n);
     if (!viz) return false;
+    brakeApply(n);                                     // Lastbremse: schwere Favoriten in kleinerer Auflösung, alles andere voll
     if (SH[n]) { if (!shShow(n, blend)) return false; }
     else {
       try { viz.loadPreset(tuned(n), blend); }
@@ -1463,7 +1503,7 @@ function analyzeEnvelopes(env, hopS) {
   }
 
   // ===== Render-Schleife (fest 60 fps) und Wächter =====
-  $('guard').addEventListener('click', () => { guard = !guard; $('guard').classList.toggle('hot', guard); slowSecs = 0; });
+  $('guard').addEventListener('click', () => { guard = !guard; $('guard').classList.toggle('hot', guard); slowSecs = 0; if (curName) brakeApply(curName); });
   const switchMs = () => PHRASE_BEATS * 60000 / bpm;
   const engaged = () => scanActive() || beat.state !== 'warten';
 
@@ -1507,10 +1547,13 @@ function analyzeEnvelopes(env, hopS) {
     $('fps').textContent = fps;
     $('hz').textContent = '60';
     perfLog(fps, t);
-    if (!guard || t - lastSwitch < 3000) { slowSecs = 0; return; }
+    fpsHist.push([t, fps]); while (fpsHist.length && t - fpsHist[0][0] > 60000) fpsHist.shift();
+    if (!guard || t - lastSwitch < 3000 || t < brakeUntil) { slowSecs = 0; return; }
     if (fps < 52) slowSecs++; else slowSecs = 0;
     if (slowSecs >= 3 && curName) {
-      slow.add(curName); slowSecs = 0; perf.marked++;
+      slowSecs = 0;
+      if (brakeTry(curName, fps, t)) return;                          // schwerer Favorit: erst eine Stufe kleiner, dann erst sperren
+      slow.add(curName); perf.marked++;
       erg('Wächter: zu langsam (' + fps + ' fps) nach ' + minSince(t) + ' · ' + curName + ' · gesperrt: ' + slow.size);
       slowMarks.push(t); while (slowMarks.length && t - slowMarks[0] > 60000) slowMarks.shift();
       if (slowMarks.length >= 6) {
@@ -1756,7 +1799,10 @@ function analyzeEnvelopes(env, hopS) {
 
   function liveFrame(t) {
     const P = 60000 / bpm;
-    while (t - beat.t >= P) { beat.t += P; beat.n++; if (beat.n % 4 === 0) onBar(beat.state); onBeat(t, P); }
+    // Lange nicht gelaufen (Scan-Modus, Pause, Track-Ende, Seite im Hintergrund): verpasste Schläge nicht auf einmal nachholen
+    // (vorher: bei einer Pause nach 6 Minuten rund 200 Takte in einem Bild, Farbe sprang wild)
+    if (t - beat.t > 6 * P) { const skip = Math.floor((t - beat.t) / P) - 1; beat.t += skip * P; beat.n += skip; }
+    while (t - beat.t >= P) { beat.t += P; beat.n++; liveTicks++; if (beat.n % 4 === 0) onBar(beat.state); onBeat(t, P); }
     const sinceKick = t - beat.lastKick;
     if (beat.state === 'groove' && sinceKick > 8 * P) { beat.breakStart = beat.lastKick; beat.kickStreak = 0; hiAtBreak = hiFast; setLiveState('break', t, P); }
     if (beat.state === 'break' && t - beat.breakStart > 16 * P && hiAtBreak > 0 && hiFast > hiAtBreak * 1.5) { buildStart = t; setLiveState('buildup', t, P); }
