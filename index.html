@@ -26,7 +26,7 @@ html,body{height:100%;background:var(--bg);color:var(--fg);overflow:hidden;font-
 #pname:empty,#pname.off{display:none}
 #hud{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));
   background:linear-gradient(to top,var(--panel) 70%,transparent);display:flex;flex-direction:column;gap:10px;transition:opacity .35s}
-@media (orientation:landscape){#hud{max-height:100dvh;overflow-y:auto;overscroll-behavior:contain}}
+#hud{box-sizing:border-box;max-height:100dvh;overflow-y:auto;overscroll-behavior:contain}
 #hud.off{opacity:0;pointer-events:none}
 button,select,input,#hud{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
@@ -71,6 +71,10 @@ button.hot{background:var(--acid);color:#111;border-color:var(--acid)}
 .slider output{color:var(--fg);min-width:6ch;text-align:right;font-variant-numeric:tabular-nums}
 a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px solid var(--acid);border-radius:6px;padding:9px 12px;min-height:38px;display:inline-flex;align-items:center;text-decoration:none}
 .note{font-size:11px;color:var(--dim);line-height:1.5}
+#dPane{display:flex;flex-direction:column;gap:8px}
+#dText{width:100%;box-sizing:border-box;min-height:64px;max-height:20vh;padding:8px;border:1px solid var(--line);border-radius:8px;background:rgba(0,0,0,.55);color:var(--fg);font:400 16px/1.3 var(--mono);-webkit-user-select:text;user-select:text;resize:none}
+.chk{display:flex;gap:8px;align-items:center;font-size:11px;color:var(--dim);line-height:1.4}
+.chk input{accent-color:var(--acid);width:20px;height:20px;flex:none}
 #mood{font-size:12px;color:var(--fg)}
 #linkTxt{-webkit-user-select:text;user-select:text;overflow-wrap:anywhere;min-width:0}
 @media (prefers-reduced-motion:reduce){#hud{transition:none}}
@@ -143,13 +147,37 @@ a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px sol
       <button id="t-morph" type="button" class="hot" title="Beim Bildwechsel verformt sich das Bild kurz mit dem Klang">Übergangs-Verformung</button>
       <button id="t-name" type="button" class="hot" title="Name des laufenden Presets oder Shaders oben rechts im Bild (auch bei ausgeblendeter Leiste, damit er auf Screenshots zu sehen ist)">Name oben rechts</button>
       <button id="t-own" type="button" class="hot" title="Ab und zu kommt einer der eigenen Shader (Peak Time, Driving, Acid) statt eines Milkdrop-Presets, passend zum Abschnitt">Eigene Shader</button>
+      <button id="t-journal" type="button" class="hot" title="Schreibt unsichtbar mit, welches Visual zu welcher Musik lief und was du damit gemacht hast (Wischen, Stern, Halten), dazu pro Track einen kleinen Steckbrief. Bleibt nur im Browser, nichts wird gesendet.">Mitschreiben</button>
     </div>
     <div class="row">
       <label class="slider" for="gain">Reaktion<input id="gain" type="range" min="0.3" max="4" step="0.1" value="1"><output id="gainOut">1.0×</output></label>
       <label class="slider" for="latency">Latenz<input id="latency" type="range" min="0" max="400" step="5" value="0"><output id="latOut">0 ms</output></label>
     </div>
     <div class="note" id="autoInfo"></div>
+    <div id="dBox" hidden>
     <div class="row">
+      <button id="dSave" type="button" title="Sterne, vermessene Presets und Mitschrift als Datei sichern (Teilen-Menü: In Dateien sichern, AirDrop, Mail …)">Sichern</button>
+      <button id="dLoad" type="button" title="Eine gesicherte Datei laden und mit dem Stand hier zusammenführen">Laden</button>
+      <button id="dCopy" type="button" title="Die Sicherung als Text kopieren">Text kopieren</button>
+      <button id="dPaste" type="button" title="Kopierten Sicherungstext einfügen und laden">Text einfügen</button>
+      <input id="dFile" type="file" accept=".json,application/json,text/plain" hidden>
+    </div>
+    <div id="dPane" hidden>
+      <textarea id="dText" rows="3" placeholder="Hier den kopierten Sicherungstext einfügen" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off" aria-label="Sicherungstext"></textarea>
+      <div class="note" id="dSum"></div>
+      <label class="chk" for="dSet"><input id="dSet" type="checkbox"> Einstellungen auch übernehmen (Schalter, Reaktion, Latenz, Auflösung, Farbe)</label>
+      <div class="row">
+        <button id="dApply" type="button" class="hot" disabled>Übernehmen</button>
+        <button id="dClose" type="button">Schließen</button>
+      </div>
+    </div>
+    <div class="row">
+      <div class="note" id="dInfo" style="flex:1 1 200px"></div>
+      <button id="dClear" type="button" title="Löscht die Mitschrift (Läufe und Track-Steckbriefe) in diesem Browser. Sterne und vermessene Presets bleiben.">Mitschrift leeren</button>
+    </div>
+    </div>
+    <div class="row">
+      <button id="dBtn" type="button" aria-expanded="false" aria-controls="dBox" title="Sterne, vermessene Presets und Mitschrift sichern oder laden (gleicht Safari und Icon ab)">Sichern/Laden</button>
       <button id="logBtn" type="button" aria-expanded="false" aria-controls="logbox">Protokoll</button>
       <button id="beepA" type="button">Testton 1</button>
       <button id="beepB" type="button">Testton 2</button>
@@ -386,7 +414,37 @@ function analyzeEnvelopes(env, hopS) {
   const midX = new Float32Array(N); for (let i = 0; i < N; i++) midX[i] = Math.hypot(env.m1[i], env.m2[i]);
   const onM = onsetList(midX, 1.6, 500, 80, nearKick), onH = onsetList(env.hi, 1.6, 400, 55);
   const refK = pct(bKick, 0.75) || 1e-9, kA = new Float32Array(K); for (let k = 0; k < K; k++) kA[k] = clamp(bKick[k] / refK);
-  return { grid, bpm, beatS, beat0: phase * hopS, barPhase, sections, mood, drops, duration: N * hopS, onM, onH, kA };
+
+  // Steckbrief fürs Mitschreiben: pro Takt wenige Zahlen als Hex-Text (kein Ton, ca. 14 Zeichen pro Takt).
+  // Pegel 0..255 bezogen auf den 95-%-Wert des Tracks; dazu Abschnittsbuchstabe, Kicks im Takt (0..4) und Zahl der Mitten-/Höhen-Anschläge.
+  // Damit lassen sich Scan, Melder und „Instrumente hören“ später am Rechner an echten Tracks nachspielen.
+  let fp = null;
+  if (grid && nBars > 0) {
+    const perBar = get => {
+      const a = new Float32Array(nBars);
+      for (let j = 0; j < nBars; j++) {
+        const s = Math.max(0, Math.round(phase + (barPhase + 4 * j) * Pf)), e = Math.min(N, Math.round(phase + (barPhase + 4 * j + 4) * Pf));
+        let x = 0; for (let i = s; i < e; i++) x += get(i);
+        a[j] = e > s ? x / (e - s) : 0;
+      }
+      return a;
+    };
+    const h2 = v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0');
+    const lv = a => { const ref = pct(a, 0.95) || 1e-9; let t = ''; for (let j = 0; j < a.length; j++) t += h2(255 * a[j] / ref); return t; };
+    const cnt = list => {
+      const c = new Array(nBars).fill(0), t0b = barT(0), t1b = barT(nBars); let j = 0;
+      for (let i = 0; i < list.length; i += 2) { const t = list[i]; if (t < t0b || t >= t1b) continue; while (j < nBars - 1 && t >= barT(j + 1)) j++; c[j]++; }
+      return c.map(h2).join('');
+    };
+    const letter = { intro: 'i', groove: 'g', break: 'b', buildup: 'u', drop: 'd', outro: 'o' };
+    let kc = ''; for (let j = 0; j < nBars; j++) { let n = 0; for (let b = 0; b < 4; b++) { const k = barPhase + 4 * j + b; if (k < K && kA[k] >= 0.35) n++; } kc += n; }
+    fp = {
+      b0: +(phase * hopS).toFixed(3), bs: +beatS.toFixed(4), bp: barPhase, n: nBars,
+      lo: lv(perBar(i => env.low[i])), mi: lv(perBar(i => env.m1[i] + env.m2[i])), hi: lv(perBar(i => env.hi[i])), fu: lv(perBar(i => env.full[i])),
+      ty: types.map(t => letter[t] || 'g').join(''), kc, om: cnt(onM), oh: cnt(onH)
+    };
+  }
+  return { grid, bpm, beatS, beat0: phase * hopS, barPhase, sections, mood, drops, duration: N * hopS, onM, onH, kA, fp };
 }
 
 (() => {
@@ -471,7 +529,8 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 33 · Milkdrop hört Instrumente (Kick, Mitten, Höhen einzeln)';
+  const BUILD = 'Build 34 · Mitschreiben (Wechsel, Sterne, Track-Steckbrief) und Sichern/Laden';
+  const BUILD_NO = 34;
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -579,7 +638,7 @@ function analyzeEnvelopes(env, hopS) {
   let frozen = false;
   let bpm = 140;
   const savedToggles = store.get('am-toggles', null);
-  const toggles = Object.assign({ auto: true, mood: true, phrase: true, drop: true, build: true, pulse: true, spark: true, acid: true, bar: true, morph: true, tune: true, own: true, name: true, instr: true }, savedToggles || {});
+  const toggles = Object.assign({ auto: true, mood: true, phrase: true, drop: true, build: true, pulse: true, spark: true, acid: true, bar: true, morph: true, tune: true, own: true, name: true, instr: true, journal: true }, savedToggles || {});
   const reduceMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
   if (reduceMotion && !savedToggles) { toggles.pulse = false; toggles.spark = false; }
 
@@ -782,7 +841,7 @@ function analyzeEnvelopes(env, hopS) {
     try {
       shPlayer.draw({ time: shTime, bass: shLv.b, mid: shLv.m, treb: shLv.h, beat: kickGlow, bar: shBar,
         build: toggles.build ? build : 0, hue: (shHue0 + shTime * 0.003) % 1, flash: reduceMotion ? 0.3 : 1 });
-    } catch (e) { if (shCur) { err('Eigener Shader Fehler: ' + e.message); broken.add(shCur); nextPreset(0.5); } }
+    } catch (e) { if (shCur) { err('Eigener Shader Fehler: ' + e.message); broken.add(shCur); nextPreset(0.5, undefined, false, 'g'); } }
   }
 
   // Worauf jedes Preset reagiert [Bass, Mitten, Höhen], vorab gemessen mit Test-Signalen (je Band eigener Rhythmus)
@@ -901,10 +960,316 @@ function analyzeEnvelopes(env, hopS) {
   $('fav').addEventListener('click', () => {
     if (!curName) return;
     if (favs.has(curName)) { favs.delete(curName); rea('Favorit entfernt: ' + curName); } else { favs.add(curName); rea('Favorit: ' + curName); }
-    store.set('am-favs', [...favs]); showFav();
+    if (JR.run) JR.run.fl |= favs.has(curName) ? 1 : 4;                // Mitschreiben: Stern gesetzt bzw. entfernt
+    store.set('am-favs', [...favs]); showFav(); jrInfo();
   });
+
+  // ===== Mitschreiben (Build 34): was lief, wozu, und was damit gemacht wurde =====
+  // Jeder Preset-/Shader-Lauf wird als eine Zeile festgehalten, dazu pro Track ein kleiner Steckbrief aus dem Scan.
+  // Alles bleibt im Browser (localStorage), nichts wird gesendet. „Sichern/Laden“ gleicht Safari und Icon ab.
+  // Anlass-Buchstaben (Start und Ende eines Laufs): i Grafik neu gestartet, a unbestimmt, t Zeitgeber, f Phrase, s Abschnittswechsel,
+  //   n Wischen weiter, p Wischen zurück, d Doppeltipp (Schnitt), g Wächter/Fehler (kein Geschmackssignal), x Einstellung, k Track-/Quellenwechsel, h Seite im Hintergrund.
+  // Flags: 1 Stern gesetzt, 2 gehalten (Freeze), 4 Stern entfernt, 8 eigener Shader, 16 war Favorit, 32 Scan aktiv, 64 Mikro.
+  const JR_KEY = 'am-journal-v1', JR_RUNS = 2500, JR_TRACKS = 80, JR_SESS = 120;
+  const JR_COLS = ['ts', 'name', 'dur', 'start', 'end', 'sec', 'flags', 'track', 'pos', 'kick', 'acid', 'hat', 'bright', 'energy', 'acidMood', 'bpm', 'touches', 'sinceTouch', 'freeze'];
+  const SEC1 = { intro: 'i', groove: 'g', break: 'b', buildup: 'u', drop: 'd', outro: 'o' };
+  const jrInt = (v, d = 0) => { v = Math.round(+v); return isFinite(v) ? v : d; };
+  const jrNum = (v, dec) => { v = +v; return isFinite(v) ? +v.toFixed(dec) : 0; };
+  const jrCh = (v, d) => (typeof v === 'string' && v ? v[0] : d);
+  // Eine Zeile prüfen und in feste Form bringen (gilt auch für geladene Dateien)
+  function jrClean(r) {
+    if (!Array.isArray(r) || r.length < 8 || !isFinite(+r[0]) || typeof r[1] !== 'string' || !r[1] || r[1].length > 300) return null;
+    return [jrInt(r[0]), r[1].slice(0, 200), jrNum(r[2], 1), jrCh(r[3], 'a'), jrCh(r[4], 'a'), jrCh(r[5], 'g'), jrInt(r[6]) & 255, typeof r[7] === 'string' ? r[7].slice(0, 16) : '',
+      jrInt(r[8], -1), jrInt(r[9], -1), jrInt(r[10], -1), jrInt(r[11], -1), jrInt(r[12], -1), jrInt(r[13], -1), jrInt(r[14], -1), jrNum(r[15], 1), jrInt(r[16]), jrInt(r[17], -1), jrNum(r[18], 1)];
+  }
+  function jrCleanFp(f) {
+    if (!f || typeof f !== 'object') return null;
+    const n = jrInt(f.n); if (n < 1 || n > 3000) return null;
+    const hex = v => (typeof v === 'string' && v.length <= 6000 && /^[0-9a-f]*$/.test(v) ? v : '');
+    return { b0: jrNum(f.b0, 3), bs: jrNum(f.bs, 4), bp: jrInt(f.bp) & 3, n, lo: hex(f.lo), mi: hex(f.mi), hi: hex(f.hi), fu: hex(f.fu), kc: hex(f.kc), om: hex(f.om), oh: hex(f.oh),
+      ty: typeof f.ty === 'string' && f.ty.length <= 3000 && /^[igbudo]*$/.test(f.ty) ? f.ty : '' };
+  }
+  function jrCleanTrack(T) {
+    if (!T || typeof T !== 'object') return null;
+    const o = { n: String(T.n || '').slice(0, 80), c: jrInt(T.c), t: jrInt(T.t), z: jrNum(T.z, 1), d: jrInt(T.d), bpm: jrNum(T.bpm, 3), dr: jrInt(T.dr), g: T.g ? 1 : 0 };
+    if (Array.isArray(T.mo) && T.mo.length === 3) o.mo = T.mo.map(x => jrInt(x));
+    if (typeof T.sk === 'string') o.sk = T.sk.slice(0, 12);
+    const fp = jrCleanFp(T.fp); if (fp) o.fp = fp;
+    return o;
+  }
+  const jrCleanSess = x => (x && typeof x === 'object' ? { ts: jrInt(x.ts), dev: String(x.dev || '').slice(0, 16), b: jrInt(x.b), sa: x.sa ? 1 : 0 } : null);
+  const JR = { dev: '', runs: [], tracks: {}, sess: [], run: null, lt: performance.now(), saved: performance.now(), dirty: false, bytes: 0, touchT: null, errLogged: false };
+  function jrInfo() {
+    const el = $('dInfo'); if (!el) return;
+    el.textContent = 'Mitschrift: ' + JR.runs.length + ' Läufe · ' + Object.keys(JR.tracks).length + ' Tracks · ' + favs.size + ' Sterne · ' + Math.max(1, Math.round(JR.bytes / 1024)) + ' KB' + (toggles.journal ? '' : ' · pausiert');
+  }
+  function jrTrim() {
+    if (JR.runs.length > JR_RUNS) JR.runs.splice(0, JR.runs.length - JR_RUNS);
+    const ids = Object.keys(JR.tracks);
+    if (ids.length > JR_TRACKS) { ids.sort((a, b) => (JR.tracks[a].t || 0) - (JR.tracks[b].t || 0)); for (const id of ids.slice(0, ids.length - JR_TRACKS)) delete JR.tracks[id]; }
+    if (JR.sess.length > JR_SESS) JR.sess.splice(0, JR.sess.length - JR_SESS);
+  }
+  function jrSave(t, force) {
+    if (!JR.dirty && !force) return;
+    JR.dirty = false; JR.saved = t; jrTrim();
+    const pack = () => JSON.stringify({ v: 1, dev: JR.dev, runs: JR.runs, tracks: JR.tracks, sess: JR.sess });
+    try { const s = pack(); localStorage.setItem(JR_KEY, s); JR.bytes = s.length; }
+    catch (e) {
+      JR.runs.splice(0, Math.ceil(JR.runs.length * 0.3));             // Speicher voll: die ältesten Läufe gehen zuerst
+      try { const s = pack(); localStorage.setItem(JR_KEY, s); JR.bytes = s.length; }
+      catch (e2) { if (!JR.errLogged) { JR.errLogged = true; err('Mitschrift konnte nicht gespeichert werden: ' + (e2 && e2.message)); } }
+    }
+    jrInfo();
+  }
+  (function jrLoad() {
+    let d = null, len = 0;
+    try { const s = localStorage.getItem(JR_KEY); if (s) { len = s.length; d = JSON.parse(s); } } catch (e) {}
+    if (d && typeof d === 'object') {
+      JR.dev = typeof d.dev === 'string' ? d.dev.slice(0, 16) : '';
+      if (Array.isArray(d.runs)) for (const r of d.runs) { const c = jrClean(r); if (c) JR.runs.push(c); }
+      if (d.tracks && typeof d.tracks === 'object') for (const id in d.tracks) { const T = jrCleanTrack(d.tracks[id]); if (T) JR.tracks[String(id).slice(0, 16)] = T; }
+      if (Array.isArray(d.sess)) for (const x of d.sess) { const c = jrCleanSess(x); if (c) JR.sess.push(c); }
+    }
+    if (!JR.dev) JR.dev = Math.random().toString(36).slice(2, 10);
+    JR.bytes = len;
+    JR.sess.push({ ts: Math.floor(Date.now() / 1000), dev: JR.dev, b: BUILD_NO, sa: (navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)) ? 1 : 0 });
+    JR.dirty = true; jrInfo();
+    erg('Mitschrift: ' + JR.runs.length + ' Läufe, ' + Object.keys(JR.tracks).length + ' Tracks im Speicher (' + Math.max(1, Math.round(len / 1024)) + ' KB), Mitschreiben ' + (toggles.journal ? 'an' : 'aus'));
+  })();
+  function jrTid(f) {
+    if (f._tid) return f._tid;
+    let h = 2166136261; const s = f.name + '|' + f.size;
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return (f._tid = (h >>> 0).toString(36));
+  }
+  const jrPct3 = o => (o ? [o.bright, o.energy, o.acid].map(x => Math.round(x * 100)) : null);
+  function jrStart(name, why) {
+    jrEnd(why);
+    if (!toggles.journal || !name) return;
+    const sv = soundTarget();
+    JR.run = {
+      ts: Math.floor(Date.now() / 1000), name, act: 0, fz: 0, tc: 0, st: why || 'a', sec: SEC1[sectionKey()] || 'g',
+      fl: (SH[name] ? 8 : 0) | (favs.has(name) ? 16 : 0) | (scanActive() ? 32 : 0) | (micOn ? 64 : 0),
+      tk: micOn ? 'mic' : (curFile ? jrTid(curFile) : ''), pos: micOn || !curFile ? -1 : Math.round(audio.currentTime),
+      v: sv ? sv.map(x => Math.round(x * 100)) : null, m: jrPct3(trackMood()), bpm
+    };
+  }
+  function jrEnd(why) {
+    const r = JR.run; if (!r) return;
+    JR.run = null;
+    if (r.act < 0.5) return;                                          // lief nie mit Musik (Start, Pause): nichts zu lernen
+    if (!r.m && r.tk === (micOn ? 'mic' : (curFile ? jrTid(curFile) : ''))) r.m = jrPct3(trackMood());
+    const ta = JR.touchT === null ? -1 : Math.min(999, Math.round((performance.now() - JR.touchT) / 1000));
+    const v = r.v || [-1, -1, -1], m = r.m || [-1, -1, -1];
+    JR.runs.push([r.ts, r.name, jrNum(r.act, 1), r.st, why || 'a', r.sec, r.fl, r.tk, r.pos, v[0], v[1], v[2], m[0], m[1], m[2], jrNum(r.bpm, 1), Math.min(99, r.tc), ta, jrNum(r.fz, 1)]);
+    if (JR.runs.length > JR_RUNS + 100) JR.runs.splice(0, JR.runs.length - JR_RUNS);
+    JR.dirty = true;
+  }
+  const jrSplit = why => { if (curName && toggles.journal) jrStart(curName, why); else jrEnd(why); };
+  function jrFrame(t) {
+    const dt = Math.min(0.25, Math.max(0, (t - JR.lt) / 1000)); JR.lt = t;
+    const r = JR.run;
+    if (r && document.visibilityState === 'visible' && (!audio.paused || micOn)) { r.act += dt; if (frozen) { r.fz += dt; r.fl |= 2; } }
+    if (JR.dirty && t - JR.saved > 45000) jrSave(t);                 // höchstens alle 45 s schreiben (bei vollem Speicher ca. 13 ms), dazu beim Verlassen und beim Sichern
+  }
+  window.addEventListener('pointerdown', () => { JR.touchT = performance.now(); if (JR.run) JR.run.tc++; }, true);
+  function jrPlay(f) {
+    const id = jrTid(f), T = JR.tracks[id] || (JR.tracks[id] = { n: '', c: 0, t: 0, z: 0, d: 0, bpm: 0, dr: 0, g: 0 });
+    T.n = f.name.replace(/\.[^.]+$/, '').slice(0, 80); T.c++; T.t = Math.floor(Date.now() / 1000); T.z = jrNum(f.size / 1048576, 1);
+    JR.dirty = true; jrTrim();
+    jrSplit('k'); if (JR.run) JR.run.pos = 0;
+  }
+  function jrScan(f, A) {
+    const id = jrTid(f), T = JR.tracks[id]; if (!T) return;
+    if (!A || A.skipped) { T.sk = A && A.skipped ? String(A.skipped).slice(0, 12) : 'fehler'; if (isFinite(audio.duration) && audio.duration > 0) T.d = Math.round(audio.duration); }
+    else {
+      delete T.sk; T.d = Math.round(A.duration); T.g = A.grid ? 1 : 0; T.dr = A.drops || 0;
+      if (A.grid) T.bpm = jrNum(A.bpm, 3);
+      T.mo = jrPct3(A.mood);
+      if (A.fp && !T.fp) T.fp = A.fp;
+    }
+    const r = JR.run;                                                  // der laufende Lauf kennt jetzt die Stimmung des Tracks
+    if (r && r.tk === id && A && !A.skipped) { if (A.grid) r.fl |= 32; if (!r.m) r.m = jrPct3(A.mood); }
+    JR.dirty = true; jrInfo();
+  }
+  if (/[?&]debug\b/.test(location.search)) window.__JR = JR;           // nur zum Testen
+
+  // ===== Sichern und Laden: Sterne, vermessene Presets, Mitschrift (auf Wunsch auch Einstellungen) als Datei oder Text =====
+  // Safari und das Home-Bildschirm-Icon teilen sich auf dem iPhone keinen Speicher. Laden führt zusammen und ist wiederholbar:
+  // nichts wird doppelt gezählt, Sterne werden nur hinzugefügt (nie entfernt).
+  const APP_ID = 'acid-milkdrop';
+  function slimProfiles(onlyLearned) {
+    const slim = {};
+    for (const n in profiles) {
+      const P = profiles[n];
+      if (onlyLearned && !(P.n > 6 || P.nm > 4)) continue;               // reine Startwerte aus acid-profile.js gehören nicht in die Sicherung
+      slim[n] = { b: +P.b.toFixed(4), s: +P.s.toFixed(4), hx: +P.hx.toFixed(4), hy: +P.hy.toFixed(4), m: +P.m.toFixed(4), n: P.n, nm: P.nm };
+    }
+    return slim;
+  }
+  function dPack() {
+    jrSave(performance.now(), true);
+    return {
+      app: APP_ID, fmt: 1, build: BUILD_NO, at: Math.floor(Date.now() / 1000), dev: JR.dev,
+      standalone: !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)),
+      favs: [...favs],
+      profiles: slimProfiles(true),
+      settings: { toggles, gain: store.get('am-gain2', null), lat: store.get('am-lat', null), quality: store.get('am-quality', null), color: store.get('am-color', null) },
+      journal: { cols: JR_COLS, runs: JR.runs, tracks: JR.tracks, sess: JR.sess }
+    };
+  }
+  function jrMergeTrack(L, T) {                                          // ergänzt, was lokal fehlt; null = nichts Neues
+    const o = Object.assign({}, L); let ch = false;
+    if (T.c > o.c) { o.c = T.c; ch = true; }
+    if (T.t > o.t) { o.t = T.t; ch = true; }
+    for (const k of ['n', 'z', 'd', 'bpm', 'dr', 'mo', 'fp']) if ((o[k] === undefined || o[k] === '' || o[k] === 0) && T[k]) { o[k] = T[k]; ch = true; }
+    if (!o.g && T.g) { o.g = 1; ch = true; }
+    return ch ? o : null;
+  }
+  // Prüft eine Sicherung (apply = false: nur zählen) oder führt sie mit dem Stand hier zusammen (apply = true)
+  function dMerge(o, apply) {
+    const res = { favs: 0, prof: 0, runs: 0, runsAll: 0, tracks: 0, sess: 0 };
+    for (const n of (Array.isArray(o.favs) ? o.favs : [])) if (typeof n === 'string' && n.length < 300 && !favs.has(n) && (presets[n] || SH[n])) { res.favs++; if (apply) favs.add(n); }
+    const pr = o.profiles && typeof o.profiles === 'object' ? o.profiles : {};
+    for (const n in pr) {
+      const Q = pr[n]; if (!presets[n] || !Q || typeof Q !== 'object') continue;
+      const q = { b: +Q.b, s: +Q.s, hx: +Q.hx, hy: +Q.hy, m: +Q.m, n: jrInt(Q.n), nm: jrInt(Q.nm) };
+      if (![q.b, q.s, q.hx, q.hy, q.m].every(isFinite) || q.n < 1 || q.n > 1e6 || q.nm < 0 || q.nm > 1e6) continue;
+      const L = profiles[n];
+      if (!L || q.n > L.n) { res.prof++; if (apply) profiles[n] = q; }      // die besser vermessene Fassung gewinnt
+    }
+    const J = o.journal && typeof o.journal === 'object' ? o.journal : {};
+    const have = new Set(JR.runs.map(r => r[0] + '|' + r[1])), add = [];
+    if (Array.isArray(J.runs)) for (const r of J.runs) {
+      const c = jrClean(r); if (!c) continue;
+      res.runsAll++; const k = c[0] + '|' + c[1];
+      if (!have.has(k)) { have.add(k); add.push(c); }
+    }
+    res.runs = add.length;
+    if (J.tracks && typeof J.tracks === 'object') for (const id in J.tracks) {
+      const T = jrCleanTrack(J.tracks[id]); if (!T) continue;
+      const key = String(id).slice(0, 16), L = JR.tracks[key];
+      if (!L) { res.tracks++; if (apply) JR.tracks[key] = T; }
+      else { const m = jrMergeTrack(L, T); if (m) { res.tracks++; if (apply) JR.tracks[key] = m; } }
+    }
+    const haveS = new Set(JR.sess.map(x => x.ts + '|' + x.dev)), addS = [];
+    if (Array.isArray(J.sess)) for (const x of J.sess) { const c = jrCleanSess(x); if (c && c.ts && !haveS.has(c.ts + '|' + c.dev)) { haveS.add(c.ts + '|' + c.dev); addS.push(c); } }
+    res.sess = addS.length;
+    if (apply) {
+      if (add.length) { JR.runs = JR.runs.concat(add).sort((a, b) => a[0] - b[0]); }
+      if (addS.length) { JR.sess = JR.sess.concat(addS).sort((a, b) => a.ts - b.ts); }
+      jrTrim();
+      if (res.favs) { store.set('am-favs', [...favs]); showFav(); }
+      if (res.prof) { profDirty = true; saveProfiles(performance.now()); }
+      if (add.length || res.tracks || addS.length) { JR.dirty = true; jrSave(performance.now(), true); }
+      jrInfo();
+    }
+    return res;
+  }
+  function dSettings(S) {                                                // Einstellungen aus einer Sicherung übernehmen (nur auf Wunsch)
+    if (!S || typeof S !== 'object') return false;
+    let did = false;
+    if (S.toggles && typeof S.toggles === 'object') {
+      for (const k in togIds) if (typeof S.toggles[k] === 'boolean') { toggles[k] = S.toggles[k]; $(togIds[k]).classList.toggle('hot', toggles[k]); did = true; }
+      store.set('am-toggles', toggles); showName();
+      if (!toggles.journal) jrEnd('x'); else if (!JR.run && curName) jrStart(curName, 'x');
+    }
+    for (const [el, v] of [[gainEl, S.gain], [latEl, S.lat]]) if (v !== null && v !== undefined && isFinite(+v)) { el.value = +v; el.dispatchEvent(new Event('input')); did = true; }
+    for (const [el, v] of [[$('quality'), S.quality], [colorEl, S.color]]) if (typeof v === 'string' && [...el.options].some(o => o.value === v && !o.disabled)) { el.value = v; el.dispatchEvent(new Event('change')); did = true; }
+    jrInfo();
+    return did;
+  }
+  function dParse(text) {
+    let o; try { o = JSON.parse(String(text).replace(/^﻿/, '').trim()); } catch (e) { return { err: 'Das ist keine gültige Sicherung (Text unvollständig oder verändert).' }; }
+    if (!o || typeof o !== 'object' || o.app !== APP_ID) return { err: 'Das ist keine Sicherung von Acid Milkdrop.' };
+    if (!(o.fmt >= 1) || o.fmt > 1) return { err: 'Diese Sicherung stammt aus einer neueren Version. Lade die Seite neu und versuch es nochmal.' };
+    return { o };
+  }
+  const dEl = { pane: $('dPane'), text: $('dText'), sum: $('dSum'), set: $('dSet'), apply: $('dApply') };
+  let dPend = null, dT = 0, sayT = 0;
+  const sayFor = (t, ms = 7000) => { say(t); clearTimeout(sayT); sayT = setTimeout(() => say(''), ms); };
+  function dOpen(showText) { dEl.pane.hidden = false; dEl.text.hidden = !showText; dEl.sum.textContent = ''; dEl.apply.disabled = true; dEl.set.checked = false; dPend = null; }
+  const dDate = s => { const d = new Date(s * 1000), p = x => String(x).padStart(2, '0'); return p(d.getDate()) + '.' + p(d.getMonth() + 1) + '.' + d.getFullYear() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()); };
+  function dShow(text) {
+    const r = dParse(text);
+    if (r.err) { dEl.sum.textContent = r.err; dEl.apply.disabled = true; dPend = null; return; }
+    dPend = r.o;
+    const m = dMerge(r.o, false), parts = [];
+    if (m.favs) parts.push(m.favs + (m.favs === 1 ? ' neuer Stern' : ' neue Sterne'));
+    if (m.prof) parts.push(m.prof + ' besser vermessene Presets');
+    if (m.runs) parts.push(m.runs + ' neue Läufe in der Mitschrift (' + m.runsAll + ' in der Datei)');
+    if (m.tracks) parts.push(m.tracks + (m.tracks === 1 ? ' neuer oder ergänzter Track' : ' neue oder ergänzte Tracks'));
+    dEl.sum.textContent = 'Sicherung vom ' + dDate(r.o.at || 0) + ' · Build ' + jrInt(r.o.build) + (r.o.standalone ? ' · aus dem Icon' : ' · aus Safari') + ' · bringt mit: ' + (parts.length ? parts.join(', ') : 'nichts Neues, alles schon da') + '.';
+    dEl.set.disabled = !r.o.settings;
+    dEl.apply.disabled = false;
+  }
+  async function dSave() {
+    const json = JSON.stringify(dPack()), kb = Math.round(json.length / 1024);
+    const name = 'acid-milkdrop-sicherung-' + new Date().toISOString().slice(0, 10) + '.txt';   // .txt: lässt sich auf dem iPhone überall teilen und in Dateien ablegen
+    try {
+      const file = new File([json], name, { type: 'text/plain' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'Acid Milkdrop Sicherung' }); rea('Sicherung geteilt: ' + name + ' (' + kb + ' KB)'); return; }
+    } catch (e) {
+      if (e && e.name === 'AbortError') { rea('Sichern abgebrochen'); return; }
+      rea('Teilen nicht möglich (' + (e && e.name) + '), lade stattdessen herunter');
+    }
+    try {
+      const a = document.createElement('a'), url = URL.createObjectURL(new Blob([json], { type: 'text/plain' }));
+      a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 10000);
+      rea('Sicherung heruntergeladen: ' + name + ' (' + kb + ' KB)');
+    } catch (e) { err('Sichern fehlgeschlagen: ' + e.message); sayFor('Sichern ging nicht. Nimm „Text kopieren“.'); }
+  }
+  $('dBtn').addEventListener('click', () => {
+    const open = $('dBox').hidden; $('dBox').hidden = !open; $('dBtn').setAttribute('aria-expanded', String(open)); $('dBtn').classList.toggle('hot', open);
+    if (open) jrInfo();
+  });
+  $('dSave').addEventListener('click', dSave);
+  $('dCopy').addEventListener('click', () => {
+    const json = JSON.stringify(dPack()), kb = Math.round(json.length / 1024);
+    const ok = () => { rea('Sicherung als Text kopiert (' + kb + ' KB)'); sayFor('Kopiert (' + kb + ' KB). In der anderen App: „Text einfügen“.'); };
+    const fallback = () => {
+      dOpen(true); dEl.text.value = json; dEl.text.focus(); try { dEl.text.setSelectionRange(0, json.length); } catch (e) {}
+      sayFor('Automatisch kopieren ging nicht. Der Text steht unten: markieren und von Hand kopieren.', 12000);
+    };
+    try { navigator.clipboard.writeText(json).then(ok, fallback); } catch (e) { fallback(); }
+  });
+  $('dLoad').addEventListener('click', () => { $('dFile').value = ''; $('dFile').click(); });
+  $('dFile').addEventListener('change', async () => {
+    const f = $('dFile').files && $('dFile').files[0]; if (!f) return;
+    dOpen(false);
+    if (f.size > 12e6) { dEl.sum.textContent = 'Die Datei ist zu groß für eine Sicherung.'; return; }
+    try { const text = await f.text(); rea('Datei gelesen: ' + f.name + ' (' + Math.round(f.size / 1024) + ' KB)'); dShow(text); }
+    catch (e) { dEl.sum.textContent = 'Die Datei konnte nicht gelesen werden.'; }
+  });
+  $('dPaste').addEventListener('click', () => { dOpen(true); dEl.text.value = ''; dEl.text.focus(); });
+  dEl.text.addEventListener('input', () => { clearTimeout(dT); dT = setTimeout(() => { if (dEl.text.value.trim()) dShow(dEl.text.value); else { dEl.sum.textContent = ''; dEl.apply.disabled = true; dPend = null; } }, 250); });
+  $('dClose').addEventListener('click', () => { dEl.pane.hidden = true; dEl.text.value = ''; dPend = null; });
+  dEl.apply.addEventListener('click', () => {
+    if (!dPend) return;
+    const o = dPend; dPend = null; dEl.apply.disabled = true;
+    const m = dMerge(o, true);
+    const setDid = dEl.set.checked && !dEl.set.disabled && dSettings(o.settings);
+    const parts = [];
+    if (m.favs) parts.push(m.favs + ' Sterne');
+    if (m.prof) parts.push(m.prof + ' Preset-Messungen');
+    if (m.runs) parts.push(m.runs + ' Läufe');
+    if (m.tracks) parts.push(m.tracks + ' Tracks');
+    if (setDid) parts.push('Einstellungen');
+    const txt = 'Geladen und zusammengeführt: ' + (parts.length ? parts.join(', ') : 'nichts Neues (alles war schon da)') + '.';
+    rea(txt); dEl.sum.textContent = txt; sayFor(txt);
+  });
+  let dClearT = 0;
+  $('dClear').addEventListener('click', () => {
+    const b = $('dClear'), reset = () => { dClearT = 0; b.textContent = 'Mitschrift leeren'; b.classList.remove('hot'); };
+    if (!dClearT) { b.textContent = 'Wirklich? Nochmal tippen'; b.classList.add('hot'); dClearT = setTimeout(reset, 4000); return; }
+    clearTimeout(dClearT); reset();
+    JR.runs.length = 0; JR.tracks = {}; JR.run = null;
+    jrSave(performance.now(), true); if (curName && toggles.journal) jrStart(curName, 'x');
+    rea('Mitschrift geleert (Sterne und vermessene Presets bleiben)');
+  });
+  if (/[?&]debug\b/.test(location.search)) window.__DATA = { dPack, dParse, dMerge, dShow, dSettings, slimProfiles };   // nur zum Testen
   function usable(n) { return !broken.has(n) && !DEAD.has(n) && !(guard && slow.has(n)); }
-  function loadByName(n, blend, pushHist = true) {
+  function loadByName(n, blend, pushHist = true, why = 'a') {
     rea('Preset: ' + n);
     if (!viz) return false;
     if (SH[n]) { if (!shShow(n, blend)) return false; }
@@ -916,6 +1281,7 @@ function analyzeEnvelopes(env, hopS) {
     curName = n; presetStart = lastSwitch = performance.now(); prevLuma = null;
     if (blender && blend > 0.2 && toggles.morph && !reduceMotion) { blender.begin(blend * 1000); morphOn = true; }
     recent.push(n); if (recent.length > 90) recent.shift();
+    jrStart(n, why);                                   // Mitschreiben: neuer Lauf, der vorige wird mit diesem Anlass abgeschlossen
     if (pushHist) { hist.splice(histPos + 1); hist.push(n); if (hist.length > 60) hist.shift(); histPos = hist.length - 1; }
     $('preset').textContent = n; showFav();
     return true;
@@ -1026,26 +1392,26 @@ function analyzeEnvelopes(env, hopS) {
     if (scanActive() && curAnalysis) { beatS = curAnalysis.beatS; if (scanSec && scanSec.blendBars) bars = scanSec.blendBars; }
     return +(bars * 4 * beatS).toFixed(3);
   }
-  function nextPreset(blend = 2.7, tg, exact) {
+  function nextPreset(blend = 2.7, tg, exact, why) {
     if (blend > 0 && !exact && blender && toggles.mood) {              // Übergangsdauer nach Klang: laut/hart = kurz, ruhig = lang
       const a = blender.suggestDuration() / 1000;
       blend = Math.min(a, Math.max(blend, 1.2));
     }
     if (toggles.own && Object.keys(SH).length && Math.random() < (shCur ? 0.05 : 0.15)) {
       const sn = pickShader();
-      if (sn && loadByName(sn, blend)) { rea('Eigener Shader · Stil ' + lastShStyle + ' · Abschnitt ' + sectionKey()); return; }
+      if (sn && loadByName(sn, blend, true, why)) { rea('Eigener Shader · Stil ' + lastShStyle + ' · Abschnitt ' + sectionKey()); return; }
     }
     for (let tries = 0; tries < 20; tries++) {
       lastFitInfo = '';
       const n = toggles.mood ? pickPreset(tg || moodTarget(sectionKey())) : randomUsable();
-      if (n && loadByName(n, blend)) { if (lastFitInfo) rea('Passung' + lastFitInfo); return; }
+      if (n && loadByName(n, blend, true, why)) { if (lastFitInfo) rea('Passung' + lastFitInfo); return; }
     }
   }
   function goNext() {
-    if (histPos < hist.length - 1) { histPos++; loadByName(hist[histPos], 1.5, false); }
-    else nextPreset(1.5);
+    if (histPos < hist.length - 1) { histPos++; loadByName(hist[histPos], 1.5, false, 'n'); }
+    else nextPreset(1.5, undefined, false, 'n');
   }
-  function goPrev() { if (histPos > 0) { histPos--; loadByName(hist[histPos], 1.5, false); } }
+  function goPrev() { if (histPos > 0) { histPos--; loadByName(hist[histPos], 1.5, false, 'p'); } }
   $('next').addEventListener('click', goNext);
   $('prev').addEventListener('click', goPrev);
   $('auto').addEventListener('click', () => { auto = !auto; $('auto').classList.toggle('hot', auto); lastSwitch = performance.now(); });
@@ -1082,9 +1448,7 @@ function analyzeEnvelopes(env, hopS) {
   function saveProfiles(t) {
     if (!profDirty) return;
     profDirty = false; lastProfSave = t;
-    const slim = {};
-    for (const n in profiles) { const P = profiles[n]; slim[n] = { b: +P.b.toFixed(4), s: +P.s.toFixed(4), hx: +P.hx.toFixed(4), hy: +P.hy.toFixed(4), m: +P.m.toFixed(4), n: P.n, nm: P.nm }; }
-    store.set('am-profiles-v1', slim);
+    store.set('am-profiles-v1', slimProfiles(false));
   }
 
   function createViz() {
@@ -1094,7 +1458,7 @@ function analyzeEnvelopes(env, hopS) {
     hookInstr();
     try { if (window.ACID_IMAGES) viz.loadExtraImages(window.ACID_IMAGES); } catch (e) {}   // Bilder für die Bild-Presets (acid-presets.js)
     applyColor();
-    nextPreset(0);
+    nextPreset(0, undefined, false, 'i');
     return true;
   }
 
@@ -1114,7 +1478,7 @@ function analyzeEnvelopes(env, hopS) {
     lastDraw = t;
     if (!frozen) {
       const shFull = shCur && shOp >= 0.999;          // eigener Shader deckt alles ab: Milkdrop pausiert und spart Grafikleistung
-      if (!shFull) { try { viz.render(); } catch (e) { if (curName) broken.add(curName); nextPreset(0); } }
+      if (!shFull) { try { viz.render(); } catch (e) { if (curName) broken.add(curName); nextPreset(0, undefined, false, 'g'); } }
       if (!shCur && shOp < 0.01) sampleFrame(t);
     }
     shFrame(t);
@@ -1126,8 +1490,9 @@ function analyzeEnvelopes(env, hopS) {
     }
     beatFrame(t);
     instrFrame(t);
+    jrFrame(t);
     fxFrame(t);
-    if (auto && !frozen && !(toggles.phrase && engaged()) && t - lastSwitch > switchMs()) nextPreset(blendSecs('groove'), undefined, true);
+    if (auto && !frozen && !(toggles.phrase && engaged()) && t - lastSwitch > switchMs()) nextPreset(blendSecs('groove'), undefined, true, 't');
   }
   // Leistungs-Protokoll: alle 5 Minuten Durchschnitt und tiefster Wert, dazu jede Wächter-Markierung (um zu sehen, ob das Handy mit der Zeit warm wird)
   const perf = { t0: performance.now(), sum: 0, n: 0, min: 99, marked: 0, last: performance.now() };
@@ -1154,7 +1519,7 @@ function analyzeEnvelopes(env, hopS) {
         say('Gerade schaffen viele Presets keine 60 fps. Wächter ist aus.');
         return;
       }
-      nextPreset(1.5);
+      nextPreset(1.5, undefined, false, 'g');
     }
   }
 
@@ -1167,7 +1532,7 @@ function analyzeEnvelopes(env, hopS) {
       const c = e.changedTouches[0], moved = Math.hypot(c.clientX - tp.x, c.clientY - tp.y); tp = null;
       if (moved > 10) return;
       const tgt = e.target && e.target.closest ? e.target : null;
-      if (tgt && tgt.closest('select,input,label')) return;
+      if (tgt && tgt.closest('select,input,label,textarea')) return;
       const tb = tgt && tgt.closest('button');
       let hit = null;
       for (const b of hud.querySelectorAll('button')) {
@@ -1180,7 +1545,7 @@ function analyzeEnvelopes(env, hopS) {
   }
 
   // ===== Schalter im Sound-Menü =====
-  const togIds = { auto: 't-auto', mood: 't-mood', phrase: 't-phrase', drop: 't-drop', build: 't-build', pulse: 't-pulse', spark: 't-spark', acid: 't-acid', bar: 't-bar', morph: 't-morph', tune: 't-tune', own: 't-own', name: 't-name', instr: 't-instr' };
+  const togIds = { auto: 't-auto', mood: 't-mood', phrase: 't-phrase', drop: 't-drop', build: 't-build', pulse: 't-pulse', spark: 't-spark', acid: 't-acid', bar: 't-bar', morph: 't-morph', tune: 't-tune', own: 't-own', name: 't-name', instr: 't-instr', journal: 't-journal' };
   for (const k in togIds) {
     const el = $(togIds[k]);
     el.classList.toggle('hot', toggles[k]);
@@ -1188,8 +1553,9 @@ function analyzeEnvelopes(env, hopS) {
       toggles[k] = !toggles[k]; el.classList.toggle('hot', toggles[k]); store.set('am-toggles', toggles);
       if (k === 'phrase') lastSwitch = performance.now();
       if (k === 'name') showName();
+      if (k === 'journal') { rea('Mitschreiben: ' + (toggles.journal ? 'an' : 'aus (bisherige Mitschrift bleibt, es kommt nichts dazu)')); jrSplit('x'); jrInfo(); }
       if (k === 'instr') rea('Instrumente hören: ' + (toggles.instr ? 'an (Kick, Mitten, Höhen einzeln)' : 'aus (Milkdrop hört wie vorher Bass, Mitte, Höhen)'));
-      if (k === 'own' && !toggles.own && shCur) nextPreset(1.5);
+      if (k === 'own' && !toggles.own && shCur) nextPreset(1.5, undefined, false, 'x');
     });
   }
   $('fineBtn').addEventListener('click', () => {
@@ -1433,7 +1799,7 @@ function analyzeEnvelopes(env, hopS) {
     if (!auto || frozen || !toggles.phrase) return;
     if (!(beat.state === 'groove' || beat.state === 'drop')) return;
     const since = beat.n - sectionBeat0;
-    if (since > 0 && since % PHRASE_BEATS === 0 && t - sectionChangeT > 8 * P) nextPreset(blendSecs('groove'), moodTarget('groove'), true);
+    if (since > 0 && since % PHRASE_BEATS === 0 && t - sectionChangeT > 8 * P) nextPreset(blendSecs('groove'), moodTarget('groove'), true, 'f');
   }
 
   // Abschnittswechsel: hier passieren Schnitt, Blitz und Stimmungswechsel
@@ -1445,7 +1811,7 @@ function analyzeEnvelopes(env, hopS) {
       build = 0; vign = 0; dropPre = 0;
       if (toggles.build && !reduceMotion) { bang = 1; if (toggles.bar) barHueTarget += 60; }   // Aufknallen: Farbe satt zurück + Farbsprung
       if (toggles.drop) {
-        if (auto) nextPreset(0, moodTarget('drop'));
+        if (auto) nextPreset(0, moodTarget('drop'), false, 's');
         flash = reduceMotion ? 0.2 : 0.7;
         burst(40);
       }
@@ -1454,9 +1820,9 @@ function analyzeEnvelopes(env, hopS) {
     }
     if (!auto) return;
     if (!scanActive() && t - lastSwitch < 32 * P) { rea('Wechsel ausgelassen: letzter Wechsel weniger als 8 Takte her'); return; }
-    if (type === 'break' && (prev === 'groove' || prev === 'drop')) nextPreset(blendSecs('break'), moodTarget('break'), true);
-    else if (type === 'groove' && (prev === 'intro' || prev === 'warten')) nextPreset(blendSecs('groove'), moodTarget('groove'), true);
-    else if (type === 'outro') nextPreset(blendSecs('outro'), moodTarget('outro'), true);
+    if (type === 'break' && (prev === 'groove' || prev === 'drop')) nextPreset(blendSecs('break'), moodTarget('break'), true, 's');
+    else if (type === 'groove' && (prev === 'intro' || prev === 'warten')) nextPreset(blendSecs('groove'), moodTarget('groove'), true, 's');
+    else if (type === 'outro') nextPreset(blendSecs('outro'), moodTarget('outro'), true, 's');
   }
 
   // ===== Scan-Modus: Ablauf kommt aus dem vorab analysierten Track =====
@@ -1501,7 +1867,7 @@ function analyzeEnvelopes(env, hopS) {
       if (prevBi !== null && bi === prevBi + 1 && auto && !frozen && toggles.phrase && (type === 'groove' || type === 'drop')) {
         const since = bi - Math.round((s.t0 - A.beat0) / A.beatS);
         const rest = (s.t1 - ts) / A.beatS;
-        if (since > 0 && since % PHRASE_BEATS === 0 && rest >= MIN_REST_BEATS && t - sectionChangeT > 8 * P) nextPreset(blendSecs('groove'), moodTarget('groove'), true);
+        if (since > 0 && since % PHRASE_BEATS === 0 && rest >= MIN_REST_BEATS && t - sectionChangeT > 8 * P) nextPreset(blendSecs('groove'), moodTarget('groove'), true, 'f');
       }
     }
   }
@@ -1616,7 +1982,7 @@ function analyzeEnvelopes(env, hopS) {
         clearTimeout(tapTimer); lastTapT = 0;
         if (hudWokeByTap) { hud.classList.add('off'); hudWokeByTap = false; }   // Doppeltipp ist ein Schnitt, keine Leiste
         flash = reduceMotion ? 0.2 : 0.6; burst(30); pulse = Math.max(pulse, 0.05);
-        nextPreset(0, moodTarget('drop'));
+        nextPreset(0, moodTarget('drop'), false, 'd');
       } else {
         lastTapT = now;
         if (hud.classList.contains('off')) { hud.classList.remove('off'); hudWoke = now; hudWokeByTap = true; lastTouch = now; }   // sofort sichtbar
@@ -1748,11 +2114,12 @@ function analyzeEnvelopes(env, hopS) {
   async function playAt(i) {
     if (i < 0 || i >= queue.length) return;
     if (micOn) stopMic();
-    qi = i; const f = queue[i]; curFile = f;
+    qi = i; const f = queue[i]; jrEnd('k'); curFile = f;
     trg('Track geladen: ' + f.name + ' (' + (f.size / 1048576).toFixed(1) + ' MB)');
     curAnalysis = null; scanType = null; lastBi = null; $('timeline').hidden = true;
     bufExit(); wdSilent = 0; resyncCount = 0; driftHits = 0;
     resetBeat(); agcReset();
+    jrPlay(f);                                         // Mitschreiben: Track vermerken, neuer Lauf für das laufende Visual
     if (audio.src) URL.revokeObjectURL(audio.src);
     audio.src = URL.createObjectURL(f);
     audio.load();
@@ -1771,8 +2138,9 @@ function analyzeEnvelopes(env, hopS) {
       if (!A || A.skipped) {
         setTrackInfo(A && A.skipped === 'lang' ? 'langer Mix, läuft live' : 'läuft live');
         erg('Kein Scan: ' + (A && A.skipped ? A.skipped : 'fehlgeschlagen') + ', läuft live');
+        jrScan(f, A);
       } else {
-        curAnalysis = A;
+        curAnalysis = A; jrScan(f, A);
         if (A.grid) setBpm(A.bpm, true);
         erg('Scan fertig: ' + (A.grid ? A.bpm.toFixed(2) + ' BPM, ' + A.drops + ' Drops' : 'kein festes Raster'));
         setTrackInfo(A.grid ? A.drops + (A.drops === 1 ? ' Drop' : ' Drops') : 'kein festes Raster, läuft live');
@@ -1816,7 +2184,7 @@ function analyzeEnvelopes(env, hopS) {
     micStream = stream; micNode = ctx.createMediaStreamSource(stream); micOn = true;
     micGainSaved = +gainEl.value; if (micGainSaved !== 1) { gainEl.value = 1; applyGain(); }   // der Auto-Pegel regelt das Mikro; ein hoher Regler würde zusätzlich übersteuern
     curAnalysis = null; scanType = null; lastBi = null; $('timeline').hidden = true;
-    resetBeat(); agcReset(); applyLat();
+    resetBeat(); agcReset(); applyLat(); jrSplit('k');
     connect(micNode);                                  // nur in die Analyse, nie zu den Lautsprechern (sonst Rückkopplung)
     $('intro').hidden = true; setTrackInfo(); $('track').textContent = 'Mikrofon · Umgebung, live'; say('');
     stream.getAudioTracks().forEach(t => t.addEventListener('ended', () => { if (micOn) { rea('Mikrofon wurde vom System beendet'); stopMic(); } }));
@@ -1833,7 +2201,7 @@ function analyzeEnvelopes(env, hopS) {
     try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
     if (srcNode && srcNode !== fileNode) srcNode = null;
     gainEl.value = micGainSaved; applyGain();
-    resetBeat(); agcReset(); applyLat(); micUi();
+    resetBeat(); agcReset(); applyLat(); micUi(); jrSplit('k');
     setTrackInfo(); rea('Mikro aus');
     if (curFile) applyScanFor(curFile);
   }
@@ -1912,10 +2280,10 @@ function analyzeEnvelopes(env, hopS) {
   ['pointerdown', 'touchend', 'click'].forEach(ev => document.addEventListener(ev, () => { if (!wakeSentinel || wakeSentinel.released) requestWake(); if (wakeVideo && wakeVideo.paused) wakeVideo.play().then(() => wakeLog('an über Video-Ersatz (nach Tipp)'), () => {}); }, { capture: true, passive: true }));
   audio.addEventListener('playing', () => requestWake());
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') { requestWake(); if (wakeVideo && wakeVideo.paused) wakeVideo.play().catch(() => {}); unlock(); resize(); }
-    else saveProfiles(performance.now());
+    if (document.visibilityState === 'visible') { requestWake(); if (wakeVideo && wakeVideo.paused) wakeVideo.play().catch(() => {}); unlock(); resize(); jrSplit('h'); }
+    else { saveProfiles(performance.now()); jrEnd('h'); jrSave(performance.now(), true); }
   });
-  window.addEventListener('pagehide', () => saveProfiles(performance.now()));
+  window.addEventListener('pagehide', () => { saveProfiles(performance.now()); jrEnd('h'); jrSave(performance.now(), true); });
 
   if (createViz()) requestWake();
   loop();
