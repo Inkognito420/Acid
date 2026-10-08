@@ -17,6 +17,7 @@
   --display:"Unbounded",system-ui,sans-serif; --mono:"Azeret Mono",ui-monospace,Menlo,monospace;
   color-scheme:dark;
 }
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 html,body{height:100%;background:var(--bg);color:var(--fg);overflow:hidden;font-family:var(--mono);-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 #stage{position:fixed;inset:0;width:100%;height:100%;display:block;background:#000;touch-action:none;transform-origin:50% 50%;will-change:transform}
 #sh{position:fixed;inset:0;width:100%;height:100%;display:block;pointer-events:none;opacity:0;transform-origin:50% 50%;will-change:transform,opacity}
@@ -24,7 +25,10 @@ html,body{height:100%;background:var(--bg);color:var(--fg);overflow:hidden;font-
 #flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;mix-blend-mode:screen}
 #pname{position:fixed;top:calc(8px + env(safe-area-inset-top,0px));right:calc(10px + env(safe-area-inset-right,0px));max-width:62vw;text-align:right;font:500 11px/1.3 var(--mono);color:#fff;background:rgba(0,0,0,.55);padding:4px 8px;border-radius:6px;pointer-events:none;z-index:5;word-break:break-word;letter-spacing:.01em}
 #pname:empty,#pname.off{display:none}
-#hud{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));
+body:has(#hud:not(.off)) #pname{opacity:0}
+#pname{transition:opacity .35s;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+@media (orientation:landscape){#pname{max-width:40vw}}
+#hud{position:fixed;left:0;right:0;bottom:0;padding:12px max(16px,calc(8px + env(safe-area-inset-right,0px))) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,calc(8px + env(safe-area-inset-left,0px)));
   background:linear-gradient(to top,var(--panel) 70%,transparent);display:flex;flex-direction:column;gap:10px;transition:opacity .35s}
 #hud{box-sizing:border-box;max-height:100dvh;overflow-y:auto;overscroll-behavior:contain}
 #hud.off{opacity:0;pointer-events:none}
@@ -77,6 +81,15 @@ a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px sol
 .chk input{accent-color:var(--acid);width:20px;height:20px;flex:none}
 #mood{font-size:12px;color:var(--fg)}
 #linkTxt{-webkit-user-select:text;user-select:text;overflow-wrap:anywhere;min-width:0}
+#fine{max-width:900px}
+.card{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:rgba(198,244,50,.07);font-size:12px;line-height:1.45}
+.card.hand{background:rgba(255,179,71,.09);border-color:rgba(255,179,71,.35)}
+.card #autoTxt{flex:1 1 220px;min-width:0}
+#werk{display:flex;flex-direction:column;gap:10px;padding-top:8px;border-top:1px dashed var(--line)}
+.grp{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.grp .gl{flex:0 0 100%;font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
+#werk button{min-height:34px;padding:7px 10px;font-size:11px}
+#werk button:not(.hot){color:var(--dim)}
 @media (prefers-reduced-motion:reduce){#hud{transition:none}}
 </style>
 </head>
@@ -94,9 +107,6 @@ a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px sol
 <div id="hud">
   <div class="row">
     <div class="brand">ACID <b>MILKDROP</b></div>
-    <span class="stat">FPS <em id="fps">–</em></span>
-    <span class="stat">RES <em id="res">–</em></span>
-    <span class="stat">HZ <em id="hz">–</em></span>
     <span class="stat">BPM <em id="bpm">–</em></span>
     <span class="beats" aria-label="Beat-Anzeige"><i></i><i></i><i></i><i></i></span>
     <span class="stat"><em id="state">–</em></span>
@@ -128,34 +138,23 @@ a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px sol
     <button id="flugBtn" type="button" aria-pressed="false" aria-label="Track-Flug an oder aus" title="Track-Flug: Du fliegst durch den Track und siehst die nächsten Takte schon vor dir, den Drop als Wand am Ende des Tunnels. Bleibt an, bis du nochmal tippst (nur bei gescannten Tracks).">Flug</button>
     <button id="auto" type="button" class="hot" hidden>Auto</button>
     <button id="guard" type="button" class="hot" title="Überspringt Presets, die keine 60 fps schaffen" hidden>Wächter</button>
-    <button id="fineBtn" type="button" aria-expanded="false" aria-controls="fine">Sound ⚙</button>
+    <button id="fineBtn" type="button" aria-expanded="false" aria-controls="fine">Mehr</button>
     <div id="preset">–</div>
   </div>
   <div id="fine" hidden>
+    <div id="autoCard" class="card">
+      <div id="autoTxt">Alles läuft automatisch.</div>
+      <button id="allAuto" type="button" class="hot" hidden>Alles auf Auto</button>
+    </div>
     <div id="mood">Stimmung: wird beim ersten Track ermittelt</div>
     <div class="row">
-      <button id="t-auto" type="button" class="hot">Auto-Pegel</button>
-      <button id="t-mood" type="button" class="hot">Stimmungs-Presets</button>
-      <button id="t-phrase" type="button" class="hot">Phrasen-Sync</button>
-      <button id="t-drop" type="button" class="hot">Drop-Cut</button>
-      <button id="t-build" type="button" class="hot">Build-up</button>
-      <button id="t-pulse" type="button" class="hot">Kick-Puls</button>
-      <button id="t-spark" type="button" class="hot">Hats &amp; Snares</button>
-      <button id="t-acid" type="button" class="hot">Acid-Farbe</button>
-      <button id="t-bar" type="button" class="hot" title="Farbton springt auf jeder Takt-Eins ein Stück weiter: im Groove leicht, im Drop kräftig, im Break steht er">Takt-Farbe</button>
-      <button id="t-instr" type="button" class="hot" title="Die Presets bekommen Kick, Mitten (303, Synths, Claps) und Hi-Hats einzeln statt verschwommener Frequenzbereiche: der Kick kommt taktgenau, Hats und Mitten flackern im Rhythmus. Zum Vergleichen aus- und einschalten.">Instrumente hören</button>
-      <button id="t-tune" type="button" class="hot" title="Schwach reagierende Presets werden verstärkt, zu starke gedämpft (gilt ab dem nächsten Bildwechsel)">Reaktions-Angleich</button>
-      <button id="t-morph" type="button" class="hot" title="Beim Bildwechsel verformt sich das Bild kurz mit dem Klang">Übergangs-Verformung</button>
-      <button id="t-name" type="button" class="hot" title="Name des laufenden Presets oder Shaders oben rechts im Bild (auch bei ausgeblendeter Leiste, damit er auf Screenshots zu sehen ist)">Name oben rechts</button>
-      <button id="t-own" type="button" class="hot" title="Ab und zu kommt einer der eigenen Shader (Peak Time, Driving, Acid) statt eines Milkdrop-Presets, passend zum Abschnitt">Eigene Shader</button>
-      <button id="t-flug" type="button" class="hot" title="Zeigt automatisch den Track-Flug, wenn ein Drop naht (ab 12 Takten vorher bis 8 Takte danach): Tunnel mit den nächsten Takten, Kicks als Rahmen, Hats als Punkte, 303 als Bögen, der Drop als leuchtende Wand. Nur bei gescannten Tracks. Mit dem Knopf „Flug“ startest du ihn selbst.">Track-Flug bei Drops</button>
-      <button id="t-journal" type="button" class="hot" title="Schreibt unsichtbar mit, welches Visual zu welcher Musik lief und was du damit gemacht hast (Wischen, Stern, Halten), dazu pro Track einen kleinen Steckbrief. Bleibt nur im Browser, nichts wird gesendet.">Mitschreiben</button>
+      <label class="slider" for="latency" title="Lautsprecher am Kabel 0 ms, Bluetooth-Box oder AirPods etwa 150–250 ms. So einstellen, dass der Puls genau mit dem Kick kommt, den du hörst.">Bluetooth-Versatz<input id="latency" type="range" min="0" max="400" step="5" value="0"><output id="latOut">0 ms</output></label>
     </div>
     <div class="row">
-      <label class="slider" for="gain">Reaktion<input id="gain" type="range" min="0.3" max="4" step="0.1" value="1"><output id="gainOut">1.0×</output></label>
-      <label class="slider" for="latency">Latenz<input id="latency" type="range" min="0" max="400" step="5" value="0"><output id="latOut">0 ms</output></label>
+      <button id="dBtn" type="button" aria-expanded="false" aria-controls="dBox" title="Sterne, vermessene Presets und Mitschrift sichern oder laden (gleicht Safari und Icon ab)">Sichern/Laden</button>
+      <button id="logBtn" type="button" aria-expanded="false" aria-controls="logbox">Protokoll</button>
+      <button id="werkBtn" type="button" aria-expanded="false" aria-controls="werk" title="Alle Einzelschalter zum Ausprobieren und Vergleichen. Normal brauchst du hier nichts.">Werkstatt</button>
     </div>
-    <div class="note" id="autoInfo"></div>
     <div id="dBox" hidden>
     <div class="row">
       <button id="dSave" type="button" title="Sterne, vermessene Presets und Mitschrift als Datei sichern (Teilen-Menü: In Dateien sichern, AirDrop, Mail …)">Sichern</button>
@@ -178,12 +177,6 @@ a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px sol
       <button id="dClear" type="button" title="Löscht die Mitschrift (Läufe und Track-Steckbriefe) in diesem Browser. Sterne und vermessene Presets bleiben.">Mitschrift leeren</button>
     </div>
     </div>
-    <div class="row">
-      <button id="dBtn" type="button" aria-expanded="false" aria-controls="dBox" title="Sterne, vermessene Presets und Mitschrift sichern oder laden (gleicht Safari und Icon ab)">Sichern/Laden</button>
-      <button id="logBtn" type="button" aria-expanded="false" aria-controls="logbox">Protokoll</button>
-      <button id="beepA" type="button">Testton 1</button>
-      <button id="beepB" type="button">Testton 2</button>
-    </div>
     <div id="logbox" hidden>
       <pre id="logpre"></pre>
       <div class="row">
@@ -192,7 +185,46 @@ a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px sol
         <button id="logClear" type="button">Leeren</button>
       </div>
     </div>
-    <div class="note">Latenz: Lautsprecher am Kabel 0 ms, Bluetooth-Box oder AirPods etwa 150–250 ms. Stell so ein, dass der Puls genau mit dem Kick kommt, den du hörst. Die Stimmungs-Presets lernen mit: Jedes Preset wird beim Laufen vermessen und gemerkt.</div>
+    <div id="werk" hidden>
+      <div class="note">Werkstatt: nur zum Ausprobieren und Vergleichen. Grün = an. Mit „Alles auf Auto“ oben ist alles wieder wie gedacht.</div>
+      <div class="grp"><span class="gl">Bildwechsel</span>
+        <button id="t-mood" type="button" class="hot" title="Presets passend zu Klang, Abschnitt und Stimmung">Stimmungs-Presets</button>
+        <button id="t-phrase" type="button" class="hot" title="Wechsel auf Phrasen und Abschnitten im Takt">Phrasen-Sync</button>
+        <button id="t-drop" type="button" class="hot" title="Harter Schnitt mit Blitz im Drop">Drop-Cut</button>
+        <button id="t-own" type="button" class="hot" title="Ab und zu kommt einer der eigenen Shader (Peak Time, Driving, Acid) statt eines Milkdrop-Presets, passend zum Abschnitt">Eigene Shader</button>
+        <button id="t-flug" type="button" class="hot" title="Zeigt automatisch den Track-Flug, wenn ein Drop naht (ab 12 Takten vorher bis 8 Takte danach). Nur bei gescannten Tracks.">Track-Flug bei Drops</button>
+      </div>
+      <div class="grp"><span class="gl">Effekte</span>
+        <button id="t-build" type="button" class="hot" title="Spannung vor dem Drop: Zoom, Vignette, Funken">Build-up</button>
+        <button id="t-pulse" type="button" class="hot" title="Bild pumpt mit dem Kick">Kick-Puls</button>
+        <button id="t-spark" type="button" class="hot" title="Funken und Ringe auf Hi-Hats und Snares">Hats &amp; Snares</button>
+        <button id="t-morph" type="button" class="hot" title="Beim Bildwechsel verformt sich das Bild kurz mit dem Klang">Übergangs-Verformung</button>
+      </div>
+      <div class="grp"><span class="gl">Farbe</span>
+        <button id="t-acid" type="button" class="hot" title="Farbe folgt der 303-Filterfahrt">Acid-Farbe</button>
+        <button id="t-bar" type="button" class="hot" title="Farbton springt auf jeder Takt-Eins ein Stück weiter: im Groove leicht, im Drop kräftig, im Break steht er">Takt-Farbe</button>
+      </div>
+      <div class="grp"><span class="gl">Hören</span>
+        <button id="t-auto" type="button" class="hot" title="Gleicht leise und laute Tracks für den Visualizer an (der Ton bleibt unverändert)">Auto-Pegel</button>
+        <button id="t-instr" type="button" class="hot" title="Die Presets bekommen Kick, Mitten (303, Synths, Claps) und Hi-Hats einzeln statt verschwommener Frequenzbereiche.">Instrumente hören</button>
+        <button id="t-tune" type="button" class="hot" title="Schwach reagierende Presets werden verstärkt, zu starke gedämpft (gilt ab dem nächsten Bildwechsel)">Reaktions-Angleich</button>
+      </div>
+      <div class="grp"><span class="gl">Anzeige</span>
+        <button id="t-name" type="button" class="hot" title="Name des laufenden Presets oben rechts, wenn die Leiste weg ist (für Screenshots)">Name oben rechts</button>
+        <button id="t-journal" type="button" class="hot" title="Schreibt unsichtbar mit, welches Visual zu welcher Musik lief und was du damit gemacht hast (Wischen, Stern, Halten). Bleibt nur im Browser, nichts wird gesendet.">Mitschreiben</button>
+      </div>
+      <div class="row">
+        <label class="slider" for="gain">Reaktion<input id="gain" type="range" min="0.3" max="4" step="0.1" value="1"><output id="gainOut">1.0×</output></label>
+      </div>
+      <div class="note" id="autoInfo"></div>
+      <div class="row">
+        <span class="stat">FPS <em id="fps">–</em></span>
+        <span class="stat">RES <em id="res">–</em></span>
+        <span class="stat">HZ <em id="hz">–</em></span>
+        <button id="beepA" type="button">Testton 1</button>
+        <button id="beepB" type="button">Testton 2</button>
+      </div>
+    </div>
   </div>
   <div id="msg"></div>
 </div>
@@ -531,8 +563,8 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 36 · Track-Flug: durch den Track fliegen';
-  const BUILD_NO = 36;
+  const BUILD = 'Build 37 · Alles auf Auto: aufgeräumte Leiste';
+  const BUILD_NO = 37;
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -643,9 +675,10 @@ function analyzeEnvelopes(env, hopS) {
   let frozen = false;
   let bpm = 140;
   const savedToggles = store.get('am-toggles', null);
-  const toggles = Object.assign({ auto: true, mood: true, phrase: true, drop: true, build: true, pulse: true, spark: true, acid: true, bar: true, morph: true, tune: true, own: true, flug: true, name: true, instr: true, journal: true }, savedToggles || {});
   const reduceMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
-  if (reduceMotion && !savedToggles) { toggles.pulse = false; toggles.spark = false; }
+  // Build 37: so ist alles gedacht (Automatik). Werkstatt-Schalter weichen davon ab, „Alles auf Auto“ setzt zurück.
+  const TOG_DEFAULT = { auto: true, mood: true, phrase: true, drop: true, build: true, pulse: !reduceMotion, spark: !reduceMotion, acid: true, bar: true, morph: true, tune: true, own: true, flug: true, name: true, instr: true, journal: true };
+  const toggles = Object.assign({}, TOG_DEFAULT, savedToggles || {});
 
   const beat = { t: performance.now(), n: 0, state: 'warten', lastKick: 0, kickStreak: 0, breakStart: 0, iois: [] };
   let levelAvg = 0, lastT = performance.now(), sectionChangeT = 0, sectionBeat0 = 0;
@@ -1269,7 +1302,7 @@ function analyzeEnvelopes(env, hopS) {
     let did = false;
     if (S.toggles && typeof S.toggles === 'object') {
       for (const k in togIds) if (typeof S.toggles[k] === 'boolean') { toggles[k] = S.toggles[k]; $(togIds[k]).classList.toggle('hot', toggles[k]); did = true; }
-      store.set('am-toggles', toggles); showName();
+      store.set('am-toggles', toggles); showName(); if (typeof autoCard === 'function') autoCard();
       if (!toggles.journal) jrEnd('x'); else if (!JR.run && curName) jrStart(curName, 'x');
     }
     for (const [el, v] of [[gainEl, S.gain], [latEl, S.lat]]) if (v !== null && v !== undefined && isFinite(+v)) { el.value = +v; el.dispatchEvent(new Event('input')); did = true; }
@@ -1712,7 +1745,37 @@ function analyzeEnvelopes(env, hopS) {
   $('fineBtn').addEventListener('click', () => {
     const open = $('fine').hidden; $('fine').hidden = !open;
     $('fineBtn').setAttribute('aria-expanded', String(open)); $('fineBtn').classList.toggle('hot', open);
+    if (open) autoCard();
   });
+  $('werkBtn').addEventListener('click', () => {
+    const open = $('werk').hidden; $('werk').hidden = !open;
+    $('werkBtn').setAttribute('aria-expanded', String(open)); $('werkBtn').classList.toggle('hot', open);
+  });
+  // ===== Automatik-Karte (Build 37): zeigt, ob alles automatisch läuft oder etwas von Hand verstellt ist =====
+  const TOG_LABEL = { auto: 'Auto-Pegel', mood: 'Stimmungs-Presets', phrase: 'Phrasen-Sync', drop: 'Drop-Cut', build: 'Build-up', pulse: 'Kick-Puls', spark: 'Hats & Snares', acid: 'Acid-Farbe', bar: 'Takt-Farbe', morph: 'Übergangs-Verformung', tune: 'Reaktions-Angleich', own: 'Eigene Shader', flug: 'Track-Flug bei Drops', name: 'Name oben rechts', instr: 'Instrumente hören', journal: 'Mitschreiben' };
+  function handSet() {
+    const out = [];
+    for (const k in TOG_DEFAULT) if (toggles[k] !== TOG_DEFAULT[k]) out.push(TOG_LABEL[k] + (toggles[k] ? ' an' : ' aus'));
+    const g = +$('gain').value; if (Math.abs(g - 1) > 0.05) out.push('Reaktion ' + g.toFixed(1) + '×');
+    return out;
+  }
+  function autoCard() {
+    const h = handSet(), card = $('autoCard');
+    card.classList.toggle('hand', h.length > 0);
+    $('allAuto').hidden = !h.length;
+    $('autoTxt').textContent = h.length
+      ? 'Von Hand verstellt: ' + h.join(', ') + '.'
+      : 'Alles läuft automatisch: Bildwechsel, Effekte und Farben richten sich nach dem Track. Du musst nichts einstellen.';
+  }
+  $('allAuto').addEventListener('click', () => {
+    const was = handSet();
+    for (const k in TOG_DEFAULT) if (toggles[k] !== TOG_DEFAULT[k]) $(togIds[k]).click();   // über den Schalter, damit jede Nebenwirkung mitläuft
+    if (Math.abs(+$('gain').value - 1) > 0.05) { $('gain').value = 1; $('gain').dispatchEvent(new Event('input')); }
+    rea('Alles auf Auto (vorher von Hand: ' + (was.join(', ') || 'nichts') + ')');
+    autoCard(); sayFor('Alles wieder auf Automatik.', 3000);
+  });
+  for (const k in togIds) $(togIds[k]).addEventListener('click', autoCard);
+  $('gain').addEventListener('change', autoCard);
 
   const gainEl = $('gain'), latEl = $('latency');
   let autoGain = 1;
