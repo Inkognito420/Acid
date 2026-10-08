@@ -125,6 +125,7 @@ a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px sol
     <button id="prev" type="button" aria-label="Vorheriges Preset">◀</button>
     <button id="next" type="button" aria-label="Nächstes Preset">▶</button>
     <button id="fav" type="button" aria-pressed="false" aria-label="Preset als Favorit markieren" title="Favorit: kommt öfter dran">☆</button>
+    <button id="flugBtn" type="button" aria-pressed="false" aria-label="Track-Flug an oder aus" title="Track-Flug: Du fliegst durch den Track und siehst die nächsten Takte schon vor dir, den Drop als Wand am Ende des Tunnels. Bleibt an, bis du nochmal tippst (nur bei gescannten Tracks).">Flug</button>
     <button id="auto" type="button" class="hot" hidden>Auto</button>
     <button id="guard" type="button" class="hot" title="Überspringt Presets, die keine 60 fps schaffen" hidden>Wächter</button>
     <button id="fineBtn" type="button" aria-expanded="false" aria-controls="fine">Sound ⚙</button>
@@ -147,6 +148,7 @@ a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px sol
       <button id="t-morph" type="button" class="hot" title="Beim Bildwechsel verformt sich das Bild kurz mit dem Klang">Übergangs-Verformung</button>
       <button id="t-name" type="button" class="hot" title="Name des laufenden Presets oder Shaders oben rechts im Bild (auch bei ausgeblendeter Leiste, damit er auf Screenshots zu sehen ist)">Name oben rechts</button>
       <button id="t-own" type="button" class="hot" title="Ab und zu kommt einer der eigenen Shader (Peak Time, Driving, Acid) statt eines Milkdrop-Presets, passend zum Abschnitt">Eigene Shader</button>
+      <button id="t-flug" type="button" class="hot" title="Zeigt automatisch den Track-Flug, wenn ein Drop naht (ab 12 Takten vorher bis 8 Takte danach): Tunnel mit den nächsten Takten, Kicks als Rahmen, Hats als Punkte, 303 als Bögen, der Drop als leuchtende Wand. Nur bei gescannten Tracks. Mit dem Knopf „Flug“ startest du ihn selbst.">Track-Flug bei Drops</button>
       <button id="t-journal" type="button" class="hot" title="Schreibt unsichtbar mit, welches Visual zu welcher Musik lief und was du damit gemacht hast (Wischen, Stern, Halten), dazu pro Track einen kleinen Steckbrief. Bleibt nur im Browser, nichts wird gesendet.">Mitschreiben</button>
     </div>
     <div class="row">
@@ -529,8 +531,8 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 35 · Lastbremse für schwere Favoriten, Pause ohne Farbsprung';
-  const BUILD_NO = 35;
+  const BUILD = 'Build 36 · Track-Flug: durch den Track fliegen';
+  const BUILD_NO = 36;
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -641,7 +643,7 @@ function analyzeEnvelopes(env, hopS) {
   let frozen = false;
   let bpm = 140;
   const savedToggles = store.get('am-toggles', null);
-  const toggles = Object.assign({ auto: true, mood: true, phrase: true, drop: true, build: true, pulse: true, spark: true, acid: true, bar: true, morph: true, tune: true, own: true, name: true, instr: true, journal: true }, savedToggles || {});
+  const toggles = Object.assign({ auto: true, mood: true, phrase: true, drop: true, build: true, pulse: true, spark: true, acid: true, bar: true, morph: true, tune: true, own: true, flug: true, name: true, instr: true, journal: true }, savedToggles || {});
   const reduceMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
   if (reduceMotion && !savedToggles) { toggles.pulse = false; toggles.spark = false; }
 
@@ -777,9 +779,98 @@ function analyzeEnvelopes(env, hopS) {
   let shPlayer = null, shCur = null, shOp = 0, shFrom = 0, shTo = 0, shT0 = 0, shDur = 0;
   let shTime = 0, shLastT = 0, shBar = 0, shHue0 = 0, lastShStyle = '';
   const shLv = { b: 0, m: 0, h: 0, pb: 1e-4, pm: 1e-4, ph: 1e-4 };
+  // ===== Track-Flug (Build 36): durch den Track fliegen =====
+  // Der Shader „Track-Flug“ (acid-shader.js) bekommt den ganzen gescannten Track als Textur und zeigt die nächsten Takte als Tunnel vor dir:
+  // Kicks = Rahmen, die genau auf dem Schlag den Bildrand erreichen, Hats = Punkte, Mitten (303) = Bögen, Abschnittswechsel = große Ringe, nächster Drop = Wand am Ende.
+  // Automatisch ab 12 Takten vor einem Drop bis 8 Takte danach (Schalter „Track-Flug bei Drops“); Knopf „Flug“ = Dauer-Modus für jeden gescannten Track.
+  // Solange er läuft, warten die automatischen Wechsel (Phrase, Abschnitt, Zeitgeber); Wischen, Doppeltipp und Wächter beenden ihn wie jedes andere Bild.
+  const FLUG_NAME = 'Eigen · Track-Flug';
+  const FLUG_LEAD_BARS = 12, FLUG_AFTER_BARS = 8, FLUG_COOL_BARS = 24;
+  const flug = { clk: 0, clkT: 0, ok: false, endTs: 0, coolUntil: 0, mode: false, release: false, why: '', t0: 0, kind: '', fpsSum: 0, fpsN: 0, fpsMin: 99, lastLeave: 0 };
+  const isFlug = () => shCur === FLUG_NAME;
+  function syncFlugBtn() { const b = $('flugBtn'); if (!b) return; const on = flug.mode || isFlug(); b.classList.toggle('hot', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+  // Spielzeit des Tracks in Sekunden: lokale Uhr, die sich sanft an audio.currentTime anlehnt (currentTime kommt im iPhone leicht ruckelig an,
+  // die Rahmen im Tunnel würden sonst zittern). Beim Springen oder großer Abweichung sofort neu setzen.
+  function flugClock(t) {
+    const raw = audio.currentTime - (+latEl.value) / 1000;
+    const dt = flug.clkT ? Math.min(0.1, Math.max(0, (t - flug.clkT) / 1000)) : 0; flug.clkT = t;
+    if (!flug.ok || audio.seeking || Math.abs(flug.clk - raw) > 0.35) { flug.clk = raw; flug.ok = true; }
+    else {
+      if (!audio.paused) flug.clk += dt * (audio.playbackRate || 1);
+      flug.clk += (raw - flug.clk) * (1 - Math.exp(-dt / 0.15));
+    }
+    return flug.clk;
+  }
+  // Track als Textur zum Spieler bringen (einmal pro Track, die Textur bleibt an der Analyse hängen)
+  function flugPrepare() {
+    const A = curAnalysis;
+    if (!A || !A.grid || !shEnsure()) return false;
+    if (shPlayer.trk.id === A) return true;
+    try {
+      if (!A._flugT) A._flugT = window.AcidShaderPlayer.buildTrack(A);
+      if (!A._flugT) return false;
+      shPlayer.setTrack(A._flugT, A);
+      rea('Track-Flug: Track als Textur geladen (' + A._flugT.n + ' Schritte, ' + A._flugT.w + '×' + A._flugT.h + ')');
+      return true;
+    } catch (e) { err('Track-Flug: Textur fehlgeschlagen (' + e.message + ')'); broken.add(FLUG_NAME); flug.mode = false; return false; }
+  }
+  const flugReady = manual => !!(SH[FLUG_NAME] && usable(FLUG_NAME) && curAnalysis && curAnalysis.grid && !micOn && (manual || toggles.own));
+  function flugStart(kind, info) {
+    if (!flugReady(kind === 'hand' || kind === 'mode')) return false;
+    flug.ok = false; flug.kind = kind;
+    const ok = loadByName(FLUG_NAME, kind === 'drop' ? blendSecs(sectionKey()) : 2, true, 'l');
+    if (ok) { flug.t0 = performance.now(); flug.fpsSum = 0; flug.fpsN = 0; flug.fpsMin = 99; rea('Track-Flug: Start (' + (kind === 'drop' ? 'Drop in ' + info + ' Takten' : kind === 'hand' ? 'Knopf' : 'Dauer-Modus') + ')'); }
+    else { flug.coolUntil = performance.now() + FLUG_COOL_BARS * 4 * curAnalysis.beatS * 1000; if (kind !== 'drop') flug.mode = false; }
+    syncFlugBtn(); return ok;
+  }
+  // Ende des Laufs vermerken (egal wie er endete: Abschnitt, Wischen, Wächter ...)
+  function flugEnded(why) {
+    const secs = Math.round((performance.now() - flug.t0) / 1000);
+    rea('Track-Flug: beendet (' + why + ') nach ' + secs + ' s' + (flug.fpsN ? ', Ø ' + Math.round(flug.fpsSum / flug.fpsN) + ' fps, tiefster ' + flug.fpsMin : ''));
+    flug.coolUntil = performance.now() + FLUG_COOL_BARS * 4 * (curAnalysis ? curAnalysis.beatS : 0.45) * 1000;   // Sperre in echter Zeit: gilt auch über Trackwechsel und Spulen
+    flug.endTs = 0; flug.lastLeave = performance.now();
+  }
+  function flugLeave(info, tag) {
+    if (!isFlug()) return;
+    flug.why = info; flug.release = true;
+    try { nextPreset(2.0, moodTarget(sectionKey()), false, tag || 's'); } finally { flug.release = false; }
+    syncFlugBtn();
+  }
+  // Pro Bild: Zeit und Drop-Abstand (in Schlägen) für den Shader. false = der Flug kann nicht weiterlaufen (Track weg) und wird beendet.
+  function flugTick(t, S) {
+    const A = curAnalysis;
+    if (!A || !A.grid || micOn) { if (t - flug.lastLeave > 1500) { flug.lastLeave = t; flugLeave('kein Scan', 'k'); } return false; }
+    if (shPlayer.trk.id !== A && !flugPrepare()) { if (t - flug.lastLeave > 1500) { flug.lastLeave = t; flugLeave('Textur', 'g'); } return false; }
+    const ts = flugClock(t), bs = A.beatS;
+    S.nb = (ts - A.beat0) / bs;
+    const dr = A._drops || (A._drops = A.sections.filter(x => x.type === 'drop').map(x => x.t0));
+    let nd = -1, ld = -1;
+    for (const d of dr) { if (d >= ts) { nd = d; break; } ld = d; }
+    S.dropIn = nd >= 0 ? (nd - ts) / bs : 1e3;
+    S.sinceDrop = ld >= 0 ? (ts - ld) / bs : 1e3;
+    if (window.__FLUG) flug.S = S;
+    return true;
+  }
+  if (/[?&]debug\b/.test(location.search)) window.__FLUG = { flug, isFlug, flugStart, flugLeave, get A() { return curAnalysis; }, get shOp() { return shOp; }, get S() { return flug.S; } };   // nur zum Testen
+  // Im Scan-Modus pro Bild: Einstieg vor dem nächsten Drop, Ende nach dem Drop, Dauer-Modus nach einem Trackwechsel wieder aufnehmen
+  function flugAuto(A, ts, t) {
+    if (frozen) return;                                           // Halten (Freeze): das laufende Bild bleibt, auch der Flug
+    if (isFlug()) {
+      if (auto && !flug.mode && flug.endTs > 0 && ts > flug.endTs && t - flug.lastLeave > 1500) { flug.lastLeave = t; flugLeave('nach dem Drop', 's'); }
+      return;
+    }
+    if (audio.paused || t - lastSwitch < 3000) return;
+    if (flug.mode) { flugStart('mode'); return; }                 // Dauer-Modus kommt auch mit Auto aus wieder (nach Trackwechsel)
+    if (!auto || !toggles.flug || !toggles.own || !(t > flug.coolUntil) || !A._drops) return;
+    let nd = -1; for (const d of A._drops) if (d > ts) { nd = d; break; }
+    if (nd < 0) return;
+    const left = (nd - ts) / (4 * A.beatS);
+    if (left <= FLUG_LEAD_BARS && left >= 1) { flug.endTs = nd + FLUG_AFTER_BARS * 4 * A.beatS; if (!flugStart('drop', Math.round(left))) flug.endTs = 0; }
+  }
   function shSize() {
     if (!W || !H) return;
-    const w = Math.max(2, Math.round(W * 0.5)), h = Math.max(2, Math.round(H * 0.5));   // halbe Auflösung: spart Grafikleistung, Shader sind weich genug
+    const T = targetSize(true);                                                         // ohne Lastbremse: die gilt nur für Milkdrop-Presets, eigene Shader laufen immer voll (halb)
+    const w = Math.max(2, Math.round(T[0] * 0.5)), h = Math.max(2, Math.round(T[1] * 0.5));   // halbe Auflösung: spart Grafikleistung, Shader sind weich genug
     if (shEl.width !== w || shEl.height !== h) { shEl.width = w; shEl.height = h; }
   }
   function shEnsure() {
@@ -792,6 +883,7 @@ function analyzeEnvelopes(env, hopS) {
   function shShow(n, blend) {
     if (!shEnsure()) return false;
     const d = SH[n];
+    if (d.track && !flugPrepare()) return false;
     if (!shPlayer.use(d.id)) { err('Eigener Shader kaputt: ' + n + ' · ' + (shPlayer.errors[d.id] || '')); broken.add(n); return false; }
     if (shCur !== n) shHue0 = Math.random();
     shCur = n; shFade(1, blend); return true;
@@ -805,7 +897,7 @@ function analyzeEnvelopes(env, hopS) {
     return md && md.energy > 0.6 ? 'peak' : 'driving';
   }
   function pickShader() {
-    const st = shStyle(), lastFew = recent.slice(-8), all = Object.keys(SH);
+    const st = shStyle(), lastFew = recent.slice(-8), all = Object.keys(SH).filter(n => !SH[n].track);
     const ok = n => usable(n) && n !== curName && !lastFew.includes(n);
     let a = all.filter(n => SH[n].style === st && ok(n));
     if (!a.length) a = all.filter(ok);
@@ -842,8 +934,10 @@ function analyzeEnvelopes(env, hopS) {
     shTime += dt / 1000;
     shSize();
     try {
-      shPlayer.draw({ time: shTime, bass: shLv.b, mid: shLv.m, treb: shLv.h, beat: kickGlow, bar: shBar,
-        build: toggles.build ? build : 0, hue: (shHue0 + shTime * 0.003) % 1, flash: reduceMotion ? 0.3 : 1 });
+      const S = { time: shTime, bass: shLv.b, mid: shLv.m, treb: shLv.h, beat: kickGlow, bar: shBar,
+        build: toggles.build ? build : 0, hue: (shHue0 + shTime * 0.003) % 1, flash: reduceMotion ? 0.3 : 1 };
+      if (shCur === FLUG_NAME && !flugTick(t, S)) return;
+      shPlayer.draw(S);
     } catch (e) { if (shCur) { err('Eigener Shader Fehler: ' + e.message); broken.add(shCur); nextPreset(0.5, undefined, false, 'g'); } }
   }
 
@@ -854,7 +948,7 @@ function analyzeEnvelopes(env, hopS) {
   const scanCache = new Map(); let scanChain = Promise.resolve();
 
   // ===== Größe =====
-  function targetSize() {
+  function targetSize(noBrake) {
     const vv = window.visualViewport;
     const cw = Math.round(vv ? vv.width : window.innerWidth);
     const ch = Math.round(vv ? vv.height : window.innerHeight);
@@ -863,7 +957,7 @@ function analyzeEnvelopes(env, hopS) {
     if (q === '2k') scale = Math.min(dpr, 2560 / long);
     else if (q === '1080') scale = Math.min(dpr, 1920 / long);
     else if (q === '720') scale = Math.min(dpr, 1280 / long);
-    scale *= BRAKE_STEPS[curStep] || 1;
+    if (!noBrake) scale *= BRAKE_STEPS[curStep] || 1;
     return [Math.max(2, Math.round(cw * scale)), Math.max(2, Math.round(ch * scale)), cw, ch, dpr];
   }
   function resize() {
@@ -971,7 +1065,7 @@ function analyzeEnvelopes(env, hopS) {
   // ===== Mitschreiben (Build 34): was lief, wozu, und was damit gemacht wurde =====
   // Jeder Preset-/Shader-Lauf wird als eine Zeile festgehalten, dazu pro Track ein kleiner Steckbrief aus dem Scan.
   // Alles bleibt im Browser (localStorage), nichts wird gesendet. „Sichern/Laden“ gleicht Safari und Icon ab.
-  // Anlass-Buchstaben (Start und Ende eines Laufs): i Grafik neu gestartet, a unbestimmt, t Zeitgeber, f Phrase, s Abschnittswechsel,
+  // Anlass-Buchstaben (Start und Ende eines Laufs): i Grafik neu gestartet, a unbestimmt, t Zeitgeber, f Phrase, s Abschnittswechsel, l Track-Flug gestartet (ab Build 36),
   //   n Wischen weiter, p Wischen zurück, d Doppeltipp (Schnitt), g Wächter/Fehler (kein Geschmackssignal), x Einstellung, k Track-/Quellenwechsel, h Seite im Hintergrund.
   // Flags: 1 Stern gesetzt, 2 gehalten (Freeze), 4 Stern entfernt, 8 eigener Shader, 16 war Favorit, 32 Scan aktiv, 64 Mikro, 128 Lastbremse (Auflösung verkleinert, ab Build 35).
   const JR_KEY = 'am-journal-v1', JR_RUNS = 2500, JR_TRACKS = 80, JR_SESS = 120;
@@ -1312,6 +1406,7 @@ function analyzeEnvelopes(env, hopS) {
     rea('Preset: ' + n);
     if (!viz) return false;
     brakeApply(n);                                     // Lastbremse: schwere Favoriten in kleinerer Auflösung, alles andere voll
+    if (isFlug() && n !== FLUG_NAME) { flugEnded(flug.why || ({ n: 'Wischen', p: 'Wischen zurück', d: 'Doppeltipp', g: 'Wächter/Fehler', x: 'Einstellung', k: 'Track weg', s: 'Abschnitt', f: 'Phrase', t: 'Zeitgeber' })[why] || why); flug.why = ''; }
     if (SH[n]) { if (!shShow(n, blend)) return false; }
     else {
       try { viz.loadPreset(tuned(n), blend); }
@@ -1433,6 +1528,7 @@ function analyzeEnvelopes(env, hopS) {
     return +(bars * 4 * beatS).toFixed(3);
   }
   function nextPreset(blend = 2.7, tg, exact, why) {
+    if (isFlug() && !flug.release && (!why || why === 'f' || why === 's' || why === 't' || why === 'a')) return;   // Track-Flug läuft: automatische Wechsel warten
     if (blend > 0 && !exact && blender && toggles.mood) {              // Übergangsdauer nach Klang: laut/hart = kurz, ruhig = lang
       const a = blender.suggestDuration() / 1000;
       blend = Math.min(a, Math.max(blend, 1.2));
@@ -1447,11 +1543,13 @@ function analyzeEnvelopes(env, hopS) {
       if (n && loadByName(n, blend, true, why)) { if (lastFitInfo) rea('Passung' + lastFitInfo); return; }
     }
   }
+  function flugHandOff() { if (flug.mode) { flug.mode = false; syncFlugBtn(); } }
   function goNext() {
+    flugHandOff();
     if (histPos < hist.length - 1) { histPos++; loadByName(hist[histPos], 1.5, false, 'n'); }
     else nextPreset(1.5, undefined, false, 'n');
   }
-  function goPrev() { if (histPos > 0) { histPos--; loadByName(hist[histPos], 1.5, false, 'p'); } }
+  function goPrev() { flugHandOff(); if (histPos > 0) { histPos--; loadByName(hist[histPos], 1.5, false, 'p'); } }
   $('next').addEventListener('click', goNext);
   $('prev').addEventListener('click', goPrev);
   $('auto').addEventListener('click', () => { auto = !auto; $('auto').classList.toggle('hot', auto); lastSwitch = performance.now(); });
@@ -1546,6 +1644,8 @@ function analyzeEnvelopes(env, hopS) {
   function perSecond(fps, t) {
     $('fps').textContent = fps;
     $('hz').textContent = '60';
+    if (isFlug() && shOp > 0.9) { flug.fpsSum += fps; flug.fpsN++; if (fps < flug.fpsMin) flug.fpsMin = fps; }
+    syncFlugBtn();
     perfLog(fps, t);
     fpsHist.push([t, fps]); while (fpsHist.length && t - fpsHist[0][0] > 60000) fpsHist.shift();
     if (!guard || t - lastSwitch < 3000 || t < brakeUntil) { slowSecs = 0; return; }
@@ -1588,7 +1688,7 @@ function analyzeEnvelopes(env, hopS) {
   }
 
   // ===== Schalter im Sound-Menü =====
-  const togIds = { auto: 't-auto', mood: 't-mood', phrase: 't-phrase', drop: 't-drop', build: 't-build', pulse: 't-pulse', spark: 't-spark', acid: 't-acid', bar: 't-bar', morph: 't-morph', tune: 't-tune', own: 't-own', name: 't-name', instr: 't-instr', journal: 't-journal' };
+  const togIds = { auto: 't-auto', mood: 't-mood', phrase: 't-phrase', drop: 't-drop', build: 't-build', pulse: 't-pulse', spark: 't-spark', acid: 't-acid', bar: 't-bar', morph: 't-morph', tune: 't-tune', own: 't-own', flug: 't-flug', name: 't-name', instr: 't-instr', journal: 't-journal' };
   for (const k in togIds) {
     const el = $(togIds[k]);
     el.classList.toggle('hot', toggles[k]);
@@ -1598,9 +1698,17 @@ function analyzeEnvelopes(env, hopS) {
       if (k === 'name') showName();
       if (k === 'journal') { rea('Mitschreiben: ' + (toggles.journal ? 'an' : 'aus (bisherige Mitschrift bleibt, es kommt nichts dazu)')); jrSplit('x'); jrInfo(); }
       if (k === 'instr') rea('Instrumente hören: ' + (toggles.instr ? 'an (Kick, Mitten, Höhen einzeln)' : 'aus (Milkdrop hört wie vorher Bass, Mitte, Höhen)'));
-      if (k === 'own' && !toggles.own && shCur) nextPreset(1.5, undefined, false, 'x');
+      if (k === 'own' && !toggles.own && shCur && !(isFlug() && flug.mode)) nextPreset(1.5, undefined, false, 'x');
+      if (k === 'flug') rea('Track-Flug bei Drops: ' + (toggles.flug ? 'an (ab 12 Takten vor einem Drop)' : 'aus (nur mit dem Knopf „Flug“)'));
     });
   }
+  $('flugBtn').addEventListener('click', () => {
+    if (flug.mode) { flug.mode = false; if (isFlug()) flugLeave('Knopf', 'x'); syncFlugBtn(); return; }   // Dauer-Modus an: nochmal tippen = aus
+    if (isFlug()) { flug.mode = true; flug.endTs = 0; rea('Track-Flug: bleibt an (Knopf)'); syncFlugBtn(); sayFor('Der Track-Flug bleibt an. Nochmal „Flug“ tippen oder Wischen beendet ihn.'); return; }   // läuft gerade von selbst: festhalten
+    if (flugReady(true)) { flug.mode = true; flugStart('hand'); syncFlugBtn(); return; }
+    if (curFile && !micOn && !curAnalysis) { flug.mode = true; syncFlugBtn(); sayFor('Der Track-Flug startet, sobald der Scan des Tracks fertig ist.'); return; }
+    sayFor('Der Track-Flug braucht einen Track mit festem Takt. Spiel einen Track ab (Mikro geht nicht).');
+  });
   $('fineBtn').addEventListener('click', () => {
     const open = $('fine').hidden; $('fine').hidden = !open;
     $('fineBtn').setAttribute('aria-expanded', String(open)); $('fineBtn').classList.toggle('hot', open);
@@ -1858,7 +1966,7 @@ function analyzeEnvelopes(env, hopS) {
       if (toggles.build && !reduceMotion) { bang = 1; if (toggles.bar) barHueTarget += 60; }   // Aufknallen: Farbe satt zurück + Farbsprung
       if (toggles.drop) {
         if (auto) nextPreset(0, moodTarget('drop'), false, 's');
-        flash = reduceMotion ? 0.2 : 0.7;
+        flash = reduceMotion ? 0.2 : (isFlug() ? 0.35 : 0.7);    // im Track-Flug blitzt schon die Wand selbst
         burst(40);
       }
       pulse = Math.max(pulse, 0.06);
@@ -1901,6 +2009,7 @@ function analyzeEnvelopes(env, hopS) {
       if (preLogT !== nd) { preLogT = nd; rea('Drop-Aufbau: Drop in ' + Math.round((nd - ts) / (4 * A.beatS)) + ' Takten (bei ' + nd.toFixed(1) + ' s)'); }
     } else dropPre = 0;
     build = Math.max(build, dropPre);
+    flugAuto(A, ts, t);
     if (bi !== lastBi) {
       const prevBi = lastBi; lastBi = bi;
       // Kick-Puls auf dem Raster: kommt pünktlich auf dem Schlag, nicht erst nach der Erkennung
@@ -2028,6 +2137,7 @@ function analyzeEnvelopes(env, hopS) {
         clearTimeout(tapTimer); lastTapT = 0;
         if (hudWokeByTap) { hud.classList.add('off'); hudWokeByTap = false; }   // Doppeltipp ist ein Schnitt, keine Leiste
         flash = reduceMotion ? 0.2 : 0.6; burst(30); pulse = Math.max(pulse, 0.05);
+        flugHandOff();
         nextPreset(0, moodTarget('drop'), false, 'd');
       } else {
         lastTapT = now;
@@ -2181,6 +2291,7 @@ function analyzeEnvelopes(env, hopS) {
   function applyScanFor(f) {
     ensureScan(f).then(A => {
       if (curFile !== f || micOn) return;
+      if (flug.mode && !(A && !A.skipped && A.grid)) { flug.mode = false; syncFlugBtn(); sayFor('Der Track-Flug geht bei diesem Track nicht: kein fester Takt erkannt oder zu lang für den Scan.'); }
       if (!A || A.skipped) {
         setTrackInfo(A && A.skipped === 'lang' ? 'langer Mix, läuft live' : 'läuft live');
         erg('Kein Scan: ' + (A && A.skipped ? A.skipped : 'fehlgeschlagen') + ', läuft live');
@@ -2230,6 +2341,7 @@ function analyzeEnvelopes(env, hopS) {
     micStream = stream; micNode = ctx.createMediaStreamSource(stream); micOn = true;
     micGainSaved = +gainEl.value; if (micGainSaved !== 1) { gainEl.value = 1; applyGain(); }   // der Auto-Pegel regelt das Mikro; ein hoher Regler würde zusätzlich übersteuern
     curAnalysis = null; scanType = null; lastBi = null; $('timeline').hidden = true;
+    flug.mode = false; syncFlugBtn();                  // Track-Flug braucht den Scan, mit Mikro geht er nicht
     resetBeat(); agcReset(); applyLat(); jrSplit('k');
     connect(micNode);                                  // nur in die Analyse, nie zu den Lautsprechern (sonst Rückkopplung)
     $('intro').hidden = true; setTrackInfo(); $('track').textContent = 'Mikrofon · Umgebung, live'; say('');
