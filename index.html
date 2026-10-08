@@ -138,6 +138,7 @@ a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px sol
       <button id="t-spark" type="button" class="hot">Hats &amp; Snares</button>
       <button id="t-acid" type="button" class="hot">Acid-Farbe</button>
       <button id="t-bar" type="button" class="hot" title="Farbton springt auf jeder Takt-Eins ein Stück weiter: im Groove leicht, im Drop kräftig, im Break steht er">Takt-Farbe</button>
+      <button id="t-instr" type="button" class="hot" title="Die Presets bekommen Kick, Mitten (303, Synths, Claps) und Hi-Hats einzeln statt verschwommener Frequenzbereiche: der Kick kommt taktgenau, Hats und Mitten flackern im Rhythmus. Zum Vergleichen aus- und einschalten.">Instrumente hören</button>
       <button id="t-tune" type="button" class="hot" title="Schwach reagierende Presets werden verstärkt, zu starke gedämpft (gilt ab dem nächsten Bildwechsel)">Reaktions-Angleich</button>
       <button id="t-morph" type="button" class="hot" title="Beim Bildwechsel verformt sich das Bild kurz mit dem Klang">Übergangs-Verformung</button>
       <button id="t-name" type="button" class="hot" title="Name des laufenden Presets oder Shaders oben rechts im Bild (auch bei ausgeblendeter Leiste, damit er auf Screenshots zu sehen ist)">Name oben rechts</button>
@@ -365,7 +366,27 @@ function analyzeEnvelopes(env, hopS) {
   const baseBars = { intro: 4, groove: mood.energy >= 0.65 ? 2 : 4, break: 4, buildup: 2, drop: 2, outro: 4 };
   for (const s of sections) s.blendBars = Math.max(1, Math.min(baseBars[s.type] || 2, Math.floor((s.endBar - s.startBar) / 2) || 1));
   const drops = sections.filter(s => s.type === 'drop').length;
-  return { grid, bpm, beatS, beat0: phase * hopS, barPhase, sections, mood, drops, duration: N * hopS };
+
+  // Treffer-Listen für „Instrumente hören“, vorab aus dem Track: Mitten- und Höhen-Anschläge (Zeit in s, Stärke 0..1 im Wechsel)
+  // und die Stärke jedes Schlags. So kommen sie punktgenau, die Live-Erkennung käme ca. 60–80 ms später. Gleiche Regel wie die Live-Melder (onsetStep).
+  const onsetList = (x, k, tau, minGap, skip) => {
+    const out = [], dtm = hopS * 1000, ca = 1 - Math.exp(-dtm / tau), cb = 1 - Math.exp(-dtm / 2500);
+    let prev = 0, mean = 0, varr = 0, avg = 0, last = -1e9;
+    for (let i = 1; i < x.length; i++) {
+      const e = x[i], flux = Math.max(0, e - prev); prev = e;
+      mean += (flux - mean) * ca; varr += ((flux - mean) ** 2 - varr) * ca; avg += (e - avg) * cb;
+      const thr = mean + k * Math.sqrt(varr), tm = i * dtm;
+      if (flux > thr && e > avg * 0.8 && e > 1e-5 && tm - last > minGap && !(skip && skip(tm))) { last = tm; out.push((i + 0.35) * hopS, Math.min(1, flux / (thr * 1.8 + 1e-9))); }
+    }
+    return Float32Array.from(out);
+  };
+  const kickMs = []; { const kl = onsetList(env.low, 2.0, 600, 180); for (let i = 0; i < kl.length; i += 2) kickMs.push(kl[i] * 1000); }
+  let kp = 0;
+  const nearKick = tm => { while (kp < kickMs.length && kickMs[kp] < tm - 45) kp++; return kp < kickMs.length && kickMs[kp] <= tm + 45; };   // Klick des Kicks in den Mitten nicht als Mitten-Anschlag zählen (tm steigt von Aufruf zu Aufruf)
+  const midX = new Float32Array(N); for (let i = 0; i < N; i++) midX[i] = Math.hypot(env.m1[i], env.m2[i]);
+  const onM = onsetList(midX, 1.6, 500, 80, nearKick), onH = onsetList(env.hi, 1.6, 400, 55);
+  const refK = pct(bKick, 0.75) || 1e-9, kA = new Float32Array(K); for (let k = 0; k < K; k++) kA[k] = clamp(bKick[k] / refK);
+  return { grid, bpm, beatS, beat0: phase * hopS, barPhase, sections, mood, drops, duration: N * hopS, onM, onH, kA };
 }
 
 (() => {
@@ -450,7 +471,7 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 32 · Name oben rechts, Favoriten häufiger (4 von 10)';
+  const BUILD = 'Build 33 · Milkdrop hört Instrumente (Kick, Mitten, Höhen einzeln)';
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -558,7 +579,7 @@ function analyzeEnvelopes(env, hopS) {
   let frozen = false;
   let bpm = 140;
   const savedToggles = store.get('am-toggles', null);
-  const toggles = Object.assign({ auto: true, mood: true, phrase: true, drop: true, build: true, pulse: true, spark: true, acid: true, bar: true, morph: true, tune: true, own: true, name: true }, savedToggles || {});
+  const toggles = Object.assign({ auto: true, mood: true, phrase: true, drop: true, build: true, pulse: true, spark: true, acid: true, bar: true, morph: true, tune: true, own: true, name: true, instr: true }, savedToggles || {});
   const reduceMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
   if (reduceMotion && !savedToggles) { toggles.pulse = false; toggles.spark = false; }
 
@@ -575,6 +596,7 @@ function analyzeEnvelopes(env, hopS) {
   const BAR_STEP = { groove: 20, drop: 45 };      // Grad pro Takt; Intro, Break, Build-up, Outro: Farbe bleibt stehen
   function onBar(type) {
     shBar = 1;                                     // eigene Shader: Takt-Eins
+    AMI.bar = 1;                                   // Instrumente hören: Kick auf der Eins etwas stärker
     if (!toggles.bar || frozen || dropPre > 0.05) return;   // vor dem Drop bleibt die Farbe stehen
     const st = BAR_STEP[type] || 0; if (!st) return;
     barHueTarget += st; barSteps++;
@@ -585,6 +607,96 @@ function analyzeEnvelopes(env, hopS) {
   const live = { bright: 0.5, acid: 0, energy: 0.5, seen: 0 };
   // Klangbild der letzten Sekunden: wie stark gerade Kick, Acid-Linie und Hi-Hats sind (je 0..1)
   const snd = { kick: 0, hat: 0, acid: 0 };
+  // ===== Instrumente hören =====
+  // Milkdrop-Presets bekommen von Butterchurn nur drei verschwommene Frequenzbereiche (bass/mid/treb). Hier werden sie ersetzt durch
+  //   Bass = Kick (taktgenau: im Scan vom Raster, live vom Kick-Melder; Takt-Eins etwas stärker),
+  //   Mitte = Mitten-Anschläge (303, Synths, Claps; Acid-Passagen heben die Grundlinie),
+  //   Höhen = Hi-Hats und Snares.
+  // Maßstab wie bei Milkdrop: 1 = Durchschnitt, Spitzen bis ca. 2. Der Pegel (wie laut es gerade ist) kommt weiter von Milkdrop (att), nur die Form kommt von uns.
+  // Gilt für alles im Preset: Formeln, Formen, Wellen und Shader (Einhängepunkt: updateAudioLevels, siehe hookInstr).
+  const AMI = { t0: 0, kE: 0, kS: 0, mE: 0, mS: 0, tE: 0, tS: 0, hk: 0, hm: 0, ht: 0, bar: 0, act: 0, hooked: false, logT: 0, lt: 0, lv: [1, 1, 1], sv: [1, 1, 1], sa: [1, 1, 1],
+    n: { k: 0, m: 0, t: 0 }, so: [0, 0, 0], mo: [0, 0, 0], sn: [0, 0, 0], mn: [0, 0, 0], c: 0, lo: [0, 0, 0] };
+  const INSTR = { bV: [0.38, 2.00], bA: [0.56, 0.70], mV: [0.32, 1.70], mA: [0.55, 0.65], tV: [0.42, 2.10], tA: [0.60, 0.80] };   // [Grundwert zwischen den Schlägen, Zuschlag auf dem Schlag]
+  if (/[?&]debug\b/.test(location.search)) { window.__AMI = AMI; AMI.ev = { k: [], m: [], h: [], s: [] }; }   // nur zum Testen: Zeitpunkte der Treffer
+  const amiEv = k => { if (AMI.ev) AMI.ev[k].push(+audio.currentTime.toFixed(3)); };
+  // Läuft jedes Bild nach der Erkennung: Hüllkurven der Kanäle. Neue Treffer (kickGlow, hm, ht) kommen voll an, danach klingen sie ab.
+  function instrFrame(t) {
+    const dt = AMI.t0 ? Math.min(100, t - AMI.t0) : 16; AMI.t0 = t;
+    const hearing = !!srcNode && ctx.state === 'running' && levelAvg > 1e-4 && (micOn || !audio.paused);
+    AMI.act = ema(AMI.act, hearing ? 1 : 0, dt, 350);
+    if (AMI.act > 0.9) AMI.ams = (AMI.ams || 0) + dt;
+    if (AMI.hk > 0) { AMI.n.k++; amiEv('k'); }
+    AMI.kE = Math.max(AMI.kE * Math.exp(-dt / 110), AMI.hk); AMI.hk = 0;
+    AMI.kS = Math.max(AMI.kS * Math.exp(-dt / 260), AMI.kE);
+    AMI.mE = Math.max(AMI.mE * Math.exp(-dt / 110), AMI.hm); AMI.hm = 0;
+    AMI.mS = Math.max(AMI.mS * Math.exp(-dt / 260), AMI.mE);
+    AMI.tE = Math.max(AMI.tE * Math.exp(-dt / 80), AMI.ht); AMI.ht = 0;
+    AMI.tS = Math.max(AMI.tS * Math.exp(-dt / 220), AMI.tE);
+    AMI.bar *= Math.exp(-dt / 220);
+    if (!AMI.logT) AMI.logT = t;
+    if (t - AMI.logT >= 120000) instrLog(t);
+  }
+  // Wird von Butterchurn in jedem Bild nach der eigenen Pegelberechnung aufgerufen (val = gerade jetzt, att = geglättet)
+  function applyInstr(al) {
+    const w = toggles.instr ? AMI.act : 0, rec = AMI.act > 0.9;
+    // Pegel: wie laut ein Band gerade im Vergleich zum Durchschnitt ist (Milkdrops val, über ca. 1,2 s geglättet). Nur die Form der Schläge kommt von uns.
+    const now = performance.now(), dtl = AMI.lt ? clamp(now - AMI.lt, 4, 100) : 16; AMI.lt = now;
+    for (let i = 0; i < 3; i++) { const v = isFinite(al.val[i]) ? al.val[i] : 1; AMI.lo[i] = v; AMI.lv[i] += (v - AMI.lv[i]) * (1 - Math.exp(-dtl / 1200)); if (!isFinite(AMI.lv[i])) AMI.lv[i] = 1; }
+    if (rec) { AMI.c++; for (let i = 0; i < 3; i++) { AMI.so[i] += al.val[i]; if (al.val[i] > AMI.mo[i]) AMI.mo[i] = al.val[i]; } }
+    if (w < 0.01) return;
+    const ac = clamp(snd.acid), I = INSTR;
+    // Form der Kanäle (Boden + Zuschlag auf dem Schlag). Damit jeder Kanal im Schnitt wie bei Milkdrop bei 1 liegt, egal wie dicht die Treffer sind
+    // (4-on-the-floor, Breaks, viele oder wenige Hats), wird die Form durch ihren eigenen Durchschnitt der letzten ca. 10 s geteilt.
+    const fv = [I.bV[0] + I.bV[1] * AMI.kE + 0.35 * AMI.bar * AMI.kE, I.mV[0] + I.mV[1] * AMI.mE + 0.10 * ac, I.tV[0] + I.tV[1] * AMI.tE];
+    const fa = [I.bA[0] + I.bA[1] * AMI.kS, I.mA[0] + I.mA[1] * AMI.mS + 0.06 * ac, I.tA[0] + I.tA[1] * AMI.tS];
+    const kn = AMI.act > 0.5 ? 1 - Math.exp(-dtl / 10000) : 0;
+    const nv = [0, 0, 0], na = [0, 0, 0];
+    for (let i = 0; i < 3; i++) {
+      AMI.sv[i] += (fv[i] - AMI.sv[i]) * kn; AMI.sa[i] += (fa[i] - AMI.sa[i]) * kn;
+      const L = clamp(AMI.lv[i], 0.3, 1.35);
+      nv[i] = L * fv[i] * clamp(1 / AMI.sv[i], 0.8, 1.6);
+      na[i] = L * fa[i] * clamp(1 / AMI.sa[i], 0.8, 1.6);
+    }
+    for (let i = 0; i < 3; i++) {
+      if (!isFinite(nv[i]) || !isFinite(na[i])) continue;
+      al.val[i] += (clamp(nv[i], 0.05, 3.2) - al.val[i]) * w;
+      al.att[i] += (clamp(na[i], 0.05, 3.2) - al.att[i]) * w;
+      if (rec) { AMI.sn[i] += al.val[i]; if (al.val[i] > AMI.mn[i]) AMI.mn[i] = al.val[i]; }
+    }
+  }
+  function instrLog(t) {
+    const c = AMI.c, am = (AMI.ams || 0) / 60000;
+    AMI.logT = t;
+    if (c >= 600 && toggles.instr && am > 0.2) {
+      const f = x => x.toFixed(2).replace('.', ',');
+      const row = (nm, i) => nm + ' Ø' + f(AMI.so[i] / c) + ' (max ' + f(AMI.mo[i]) + ') → Ø' + f(AMI.sn[i] / c) + ' (max ' + f(AMI.mn[i]) + ')';
+      erg('Instrumente in ' + f(am) + ' min Musik, Milkdrop → neu: ' + row('Bass', 0) + ' · ' + row('Mitte', 1) + ' · ' + row('Höhen', 2) + ' · Treffer pro Minute: Kick ' + Math.round(AMI.n.k / am) + ', Mitte ' + Math.round(AMI.n.m / am) + ', Höhen ' + Math.round(AMI.n.t / am));
+    }
+    AMI.c = 0; AMI.ams = 0; AMI.n.k = AMI.n.m = AMI.n.t = 0;
+    for (let i = 0; i < 3; i++) { AMI.so[i] = AMI.sn[i] = AMI.mo[i] = AMI.mn[i] = 0; }
+  }
+  // Scan-Modus: Mitten- und Höhen-Anschläge kommen aus der Vorab-Analyse (A.onM, A.onH) genau dann, wenn der Ton dort ankommt
+  const scanPtr = { A: null, ts: -1, m: 0, h: 0 };
+  function feedScanHits(A, ts) {
+    if (!A.onM || !A.onH) return;
+    const P = scanPtr, lower = (arr, x) => { let lo = 0, hi = arr.length >> 1; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[2 * m] < x) lo = m + 1; else hi = m; } return lo; };
+    if (P.A !== A || ts < P.ts - 0.02 || ts > P.ts + 0.5) { P.A = A; P.m = lower(A.onM, ts); P.h = lower(A.onH, ts); }   // neuer Track oder gespult: Zeiger neu setzen
+    P.ts = ts;
+    while (P.m < (A.onM.length >> 1) && A.onM[2 * P.m] <= ts) { AMI.hm = Math.max(AMI.hm, 0.4 + 0.6 * A.onM[2 * P.m + 1]); AMI.n.m++; amiEv('m'); P.m++; }
+    while (P.h < (A.onH.length >> 1) && A.onH[2 * P.h] <= ts) { AMI.ht = Math.max(AMI.ht, 0.35 + 0.65 * A.onH[2 * P.h + 1]); AMI.n.t++; amiEv('h'); P.h++; }
+  }
+  // Einhängen: Butterchurn berechnet bass/mid/treb in renderer.audioLevels; wir lassen danach unsere Werte darüberlaufen.
+  // So sehen alle Teile eines Presets (Formeln, Formen, Wellen, Shader) dieselben Werte. Fehlt der Einhängepunkt, läuft alles wie vorher.
+  function hookInstr() {
+    try {
+      const al = viz && viz.renderer && viz.renderer.audioLevels;
+      if (!al || typeof al.updateAudioLevels !== 'function' || !al.val || !al.att) { err('Instrumente hören: Einhängepunkt in Butterchurn nicht gefunden, Presets hören wie vorher'); return; }
+      const orig = al.updateAudioLevels;
+      al.updateAudioLevels = function (fps, frame) { orig.call(this, fps, frame); try { applyInstr(this); } catch (e) {} };
+      AMI.hooked = true; if (window.__AMI) AMI.al = al;
+      rea('Instrumente hören: eingehängt (Kick, Mitten, Höhen einzeln)');
+    } catch (e) { err('Instrumente hören: ' + e.message); }
+  }
   // Feinere Klang-Analyse (24 Bänder) und Übergangs-Steuerung. Fehlen die Dateien, läuft alles wie vorher.
   const reactive = window.AudioReactiveController ? (() => { try { return new window.AudioReactiveController(analyser, { numBands: 24, minHz: 35, maxHz: 16000, smoothing: 0.18 }); } catch (e) { return null; } })() : null;
   const blender = window.AdaptivePresetBlender ? new window.AdaptivePresetBlender() : null;
@@ -979,6 +1091,7 @@ function analyzeEnvelopes(env, hopS) {
     try { viz = BC.createVisualizer(ctx, canvas, { width: W, height: H, pixelRatio: 1, textureRatio: 1 }); }
     catch (e) { viz = null; say('WebGL startet nicht. Schließ andere Tabs und lade die Seite neu.'); return false; }
     try { viz.connectAudio(delayNode); } catch (e) {}
+    hookInstr();
     try { if (window.ACID_IMAGES) viz.loadExtraImages(window.ACID_IMAGES); } catch (e) {}   // Bilder für die Bild-Presets (acid-presets.js)
     applyColor();
     nextPreset(0);
@@ -1012,6 +1125,7 @@ function analyzeEnvelopes(env, hopS) {
       if (document.visibilityState === 'visible' && !frozen) perSecond(fps, t);
     }
     beatFrame(t);
+    instrFrame(t);
     fxFrame(t);
     if (auto && !frozen && !(toggles.phrase && engaged()) && t - lastSwitch > switchMs()) nextPreset(blendSecs('groove'), undefined, true);
   }
@@ -1066,7 +1180,7 @@ function analyzeEnvelopes(env, hopS) {
   }
 
   // ===== Schalter im Sound-Menü =====
-  const togIds = { auto: 't-auto', mood: 't-mood', phrase: 't-phrase', drop: 't-drop', build: 't-build', pulse: 't-pulse', spark: 't-spark', acid: 't-acid', bar: 't-bar', morph: 't-morph', tune: 't-tune', own: 't-own', name: 't-name' };
+  const togIds = { auto: 't-auto', mood: 't-mood', phrase: 't-phrase', drop: 't-drop', build: 't-build', pulse: 't-pulse', spark: 't-spark', acid: 't-acid', bar: 't-bar', morph: 't-morph', tune: 't-tune', own: 't-own', name: 't-name', instr: 't-instr' };
   for (const k in togIds) {
     const el = $(togIds[k]);
     el.classList.toggle('hot', toggles[k]);
@@ -1074,6 +1188,7 @@ function analyzeEnvelopes(env, hopS) {
       toggles[k] = !toggles[k]; el.classList.toggle('hot', toggles[k]); store.set('am-toggles', toggles);
       if (k === 'phrase') lastSwitch = performance.now();
       if (k === 'name') showName();
+      if (k === 'instr') rea('Instrumente hören: ' + (toggles.instr ? 'an (Kick, Mitten, Höhen einzeln)' : 'aus (Milkdrop hört wie vorher Bass, Mitte, Höhen)'));
       if (k === 'own' && !toggles.own && shCur) nextPreset(1.5);
     });
   }
@@ -1211,7 +1326,8 @@ function analyzeEnvelopes(env, hopS) {
   const det = {
     kick: mkOnset(40, 130, 2.0, 600, 180),
     snare: mkOnset(1500, 5000, 2.2, 500, 120),
-    hat: mkOnset(7000, 15000, 1.6, 400, 55)
+    hat: mkOnset(7000, 15000, 1.6, 400, 55),
+    mid: mkOnset(300, 3000, 1.6, 500, 80)           // Anschläge in den Mitten: 303-Noten, Synths, Claps (für „Instrumente hören“)
   };
   const bM1 = band(300, 1000), bM2 = band(1000, 3000);
 
@@ -1234,8 +1350,9 @@ function analyzeEnvelopes(env, hopS) {
 
       det.kick.minGap = Math.min(300, 60000 / bpm * 0.6);
       const kS = onsetStep(det.kick, t, dt); if (kS) onKick(t, kS);
-      const sS = onsetStep(det.snare, t, dt); if (sS && t - det.kick.last > 60) onSnare(sS);
-      const hS = onsetStep(det.hat, t, dt); if (hS) onHat(hS);
+      const sS = onsetStep(det.snare, t, dt); if (sS && t - det.kick.last > 60) { onSnare(sS); if (!scanActive()) { AMI.ht = Math.max(AMI.ht, 0.5 + 0.5 * sS); AMI.n.t++; amiEv('s'); } }
+      const hS = onsetStep(det.hat, t, dt); if (hS) { onHat(hS); if (!scanActive()) { AMI.ht = Math.max(AMI.ht, 0.35 + 0.65 * hS); AMI.n.t++; amiEv('h'); } }
+      const mS = onsetStep(det.mid, t, dt); if (mS && t - det.kick.last > 50 && !scanActive()) { AMI.hm = Math.max(AMI.hm, 0.4 + 0.6 * mS); AMI.n.m++; amiEv('m'); }
       hiFast = ema(hiFast, det.hat.e + det.snare.e, dt, 800);
       if (reactive) { try { feedBlender(reactive.update(), dt); } catch (e) {} }
       { const dec = Math.exp(-dt / 4000), perBeat = bpm / 60 * 4;   // ca. 4 Sekunden Gedächtnis
@@ -1289,7 +1406,7 @@ function analyzeEnvelopes(env, hopS) {
 
   function onKick(t, strength) {
     if (scanActive()) return;                       // im Scan-Modus kommt der Puls exakt vom Raster (scanFrame)
-    kickGlow = 1;
+    kickGlow = 1; AMI.hk = Math.max(AMI.hk, 0.55 + 0.45 * strength);
     pulse = Math.max(pulse, 0.02 + 0.04 * strength);
     const P = 60000 / bpm, gap = t - beat.lastKick;
     if (beat.lastKick && gap < 2000) {
@@ -1357,6 +1474,7 @@ function analyzeEnvelopes(env, hopS) {
     scanSec = s;
     const type = s ? s.type : 'intro';
     const P = A.beatS * 1000;
+    if (!audio.paused) feedScanHits(A, ts);
     if (type !== scanType) {
       const prev = scanType; scanType = type;
       if (prev !== null) onSection(type, prev, P, t); else sectionChangeT = t;
@@ -1377,6 +1495,7 @@ function analyzeEnvelopes(env, hopS) {
       if (prevBi !== null && bi === prevBi + 1 && (type === 'groove' || type === 'drop' || type === 'buildup') && !audio.paused) {
         const sinceDrop = type === 'drop' ? 1 : 0;
         kickGlow = 1; pulse = Math.max(pulse, type === 'drop' ? 0.05 : type === 'buildup' ? 0.02 + 0.03 * build : 0.035);
+        { const ka = A.kA && bi >= 0 && bi < A.kA.length ? A.kA[bi] : 1; if (ka >= 0.35) AMI.hk = Math.max(AMI.hk, 0.5 + 0.5 * ka); }   // Instrumente hören: nur echte Kicks, mit gemessener Stärke
         if (beat.n % 4 === 0) { pulse += 0.01 * (1 + sinceDrop); onBar(type); }   // Takt-Eins etwas stärker, Farbe springt weiter
       }
       if (prevBi !== null && bi === prevBi + 1 && auto && !frozen && toggles.phrase && (type === 'groove' || type === 'drop')) {
