@@ -35,6 +35,27 @@ fit(); addEventListener('resize', fit);
 var pl = new AcidShaderPlayer(cv, { fast: !ALT });
 var warmMs = ALT ? 0 : pl.warmAll();       // neu: alle Shader gleich beim Laden vorbereiten
 
+// Künstlicher Track für den Track-Flug (140 BPM, 2 Minuten = 70 Takte, Drop bei Takt 36), wiederholt sich. So misst der Messlauf den Track-Flug mit Daten wie in der App.
+var TA = (function(){
+  var bs = 60/140, bar = 4*bs, secBars = [['intro',0,8],['groove',8,24],['break',24,32],['buildup',32,36],['drop',36,52],['groove',52,64],['outro',64,70]];
+  var seed = 7, rnd = function(){ seed = (seed*1664525 + 1013904223) >>> 0; return seed/4294967296; };
+  var sections = secBars.map(function(x){ return { type:x[0], startBar:x[1], endBar:x[2], t0:x[1]*bar, t1:x[2]*bar }; });
+  var typeAt = function(b){ for (var i = 0; i < secBars.length; i++) if (b >= secBars[i][1] && b < secBars[i][2]) return secBars[i][0]; return 'outro'; };
+  var kA = [], onH = [], onM = [], b, q, ty;
+  for (b = 0; b < 280; b++) {
+    ty = typeAt(Math.floor(b/4));
+    kA.push(ty === 'break' ? 0 : (ty === 'buildup' && b % 4 !== 0) ? 0 : 0.9);
+    if (ty !== 'break') onH.push((b + 0.5)*bs, 0.7 + 0.3*rnd());
+    for (q = 0; q < 4; q++) {
+      if (ty === 'groove' || ty === 'drop') { if (rnd() < 0.3) onM.push((b + q/4)*bs, 0.3 + 0.7*rnd()); if (q % 2 === 1 && rnd() < 0.5) onH.push((b + q/4)*bs, 0.3 + 0.4*rnd()); }
+      else if (ty === 'break' && rnd() < 0.12) onM.push((b + q/4)*bs, 0.3 + 0.5*rnd());
+    }
+  }
+  return { grid: true, bpm: 140, beatS: bs, beat0: 0, barPhase: 0, duration: 70*bar, sections: sections, kA: kA, onH: onH, onM: onM };
+})();
+pl.setTrack(AcidShaderPlayer.buildTrack(TA), TA);
+var DROPS = TA.sections.filter(function(x){ return x.type === 'drop'; }).map(function(x){ return x.t0; });
+
 var cur = ACID_SHADERS[0].id, worst = 0, worstShown = 0, lastMs = 0, frames = 0, t0 = performance.now(), fps = 0;
 var spike = '';            // Ruckler beim letzten Wechsel
 var run = null, results = [];
@@ -81,8 +102,11 @@ function runStep(ms, dt){
 function state(t){
   var bps = 140/60, ph = (t*bps) % 1, barph = (t*bps/4) % 1;
   var beat = Math.pow(1 - ph, 3), bark = Math.pow(1 - barph, 4);
+  var tt = t % TA.duration, dIn = 1e3, dSince = 1e3, i;                // Lage im künstlichen Track (für den Track-Flug)
+  for (i = 0; i < DROPS.length; i++) { if (DROPS[i] >= tt) { dIn = (DROPS[i] - tt)/TA.beatS; break; } dSince = (tt - DROPS[i])/TA.beatS; }
   return { time:t, bass:0.4+0.5*beat, mid:0.5+0.4*Math.sin(t*0.9), treb:0.3+0.3*Math.sin(t*7.0),
-           beat:beat, bar:bark, build:Math.max(0, Math.sin(t*0.15)), hue:(t*0.02)%1, flash:1 };
+           beat:beat, bar:bark, build:Math.max(0, Math.sin(t*0.15)), hue:(t*0.02)%1, flash:1,
+           nb:tt/TA.beatS, dropIn:dIn, sinceDrop:dSince };
 }
 select(cur);
 function frame(ms){
