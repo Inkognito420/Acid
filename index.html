@@ -446,7 +446,7 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 30 · Eigene Shader (7 Stück, ca. 15 % der Wechsel, Schalter „Eigene Shader“)';
+  const BUILD = 'Build 31 · Eigene Shader schneller (Leuchten halb, Rauschen aus Bild, vorab vorbereitet)';
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -641,7 +641,21 @@ function analyzeEnvelopes(env, hopS) {
     shLv.pb = Math.max(shLv.pb * k, b, 1e-4); shLv.pm = Math.max(shLv.pm * k, m, 1e-4); shLv.ph = Math.max(shLv.ph * k, h, 1e-4);
     shLv.b = ema(shLv.b, clamp(b / shLv.pb), dt, 40); shLv.m = ema(shLv.m, clamp(m / shLv.pm), dt, 60); shLv.h = ema(shLv.h, clamp(h / shLv.ph), dt, 40);
   }
+  // Vorbereiten: kurz nach dem Start jeden Shader einzeln übersetzen (unsichtbar), damit der erste echte Wechsel nicht ruckelt
+  let shWarmI = 0, shWarmAt = 0, shWarmMs = 0, shWarmMax = 0;
+  function shWarmStep(t) {
+    const list = window.ACID_SHADERS || [];
+    if (!toggles.own || frozen || shWarmI >= list.length || shCur || shOp >= 0.002) return;
+    if (!shWarmAt) { shWarmAt = t + 1500; return; }            // erst 1,5 s nach dem Start, dann alle 0,3 s einer
+    if (t < shWarmAt || !shEnsure()) return;
+    const d = list[shWarmI++], ms = shPlayer.warm(d.id);
+    shWarmAt = t + 300;
+    if (ms < 0) { err('Eigener Shader kaputt: Eigen · ' + d.name + ' · ' + (shPlayer.errors[d.id] || '')); broken.add('Eigen · ' + d.name); }
+    else { shWarmMs += ms; shWarmMax = Math.max(shWarmMax, ms); }
+    if (shWarmI >= list.length) rea('Eigene Shader vorbereitet: ' + list.length + ' Stück, zusammen ' + Math.round(shWarmMs) + ' ms, längster ' + Math.round(shWarmMax) + ' ms');
+  }
   function shFrame(t) {
+    shWarmStep(t);
     if (shDur) { const p = Math.min(1, (t - shT0) / shDur); shOp = shFrom + (shTo - shFrom) * p; if (p >= 1) shDur = 0; }
     const o = shOp < 0.002 ? '0' : shOp.toFixed(3);
     if (shEl.style.opacity !== o) shEl.style.opacity = o;

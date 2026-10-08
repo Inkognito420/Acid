@@ -1,6 +1,6 @@
 /* ============================================================
-   Acid Milkdrop: eigene Shader (Vorrat, noch nicht eingebaut)
-   Stand: 08.10.2026
+   Acid Milkdrop: eigene Shader
+   Stand: 08.10.2026 (Build 31)
 
    Was ist das?
    Sieben selbst geschriebene Bild-Effekte (Fragment-Shader), je zwei pro Stil
@@ -23,6 +23,14 @@
               (Takt-Eins hellt nur helle Stellen auf, Schwarz bleibt schwarz)
 
    Alle Schleifen sind klein und fest (iPhone-freundlich).
+
+   Build 31 – drei Spar-Tricks (Modus "neu", Standard; "alt" = wie Build 30):
+     1. Echo-Ring: Leuchten wird auf einem Zwischenbild in halber Breite/Höhe
+        gerechnet (wie Milkdrops Blur) -> ca. 4,5 statt 8 Bild-Abfragen pro Pixel.
+     2. Rauschen (Rumble-Nebel) kommt aus einem fertigen 256x256-Zufallsbild
+        statt 4 Sinus-Rechnungen pro Punkt -> 12 Abfragen statt 48 Sinus.
+     3. warm(id): Shader vorab übersetzen und einmal 1x1 Pixel zeichnen, damit
+        beim ersten echten Wechsel nichts mehr ruckelt.
    ============================================================ */
 (function () {
   var PRELUDE = [
@@ -46,6 +54,15 @@
     'vec2 uvc(){ return (gl_FragCoord.xy - 0.5*u_res) / u_res.y; }',
     ''
   ].join('\n');
+  // Modus "neu": gleiches Rauschen, aber aus einem fertigen Zufallsbild gelesen (eine Abfrage statt 4x Sinus).
+  // Die Grafikkarte mischt die 4 Nachbarpunkte selbst (LINEAR), der weiche Übergang (f*f*(3-2f)) bleibt.
+  var PRELUDE_FAST = PRELUDE.replace(
+    /float vnoise\(vec2 p\)\{[\s\S]*?\n\}\n/,
+    'uniform sampler2D u_noise;\n' +
+    'float vnoise(vec2 p){\n' +
+    '  vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);\n' +
+    '  return texture2D(u_noise, (i + f + 0.5) / 256.0).r;\n' +
+    '}\n');
 
   var SHADERS = [];
 
@@ -271,6 +288,37 @@
       '  col = col / (1.0 + 0.25*col);',
       '  gl_FragColor = vec4(col, 1.0);',
       '}'
+    ].join('\n'),
+    // Modus "neu", Schritt A: Leuchten auf einem Zwischenbild in HALBER Größe (u_res = halbe Größe)
+    glow: [
+      'uniform sampler2D u_tex;',
+      'void main(){',
+      '  vec2 uv = gl_FragCoord.xy / u_res;',
+      '  vec2 px = 0.5 / u_res;',            // ein Pixel der vollen Fläche
+      '  float gr = 6.0 + 10.0*u_build + 6.0*u_bass;',
+      '  vec3 g = vec3(0.0);',
+      '  float spin = 0.3;',
+      '  for (int i = 0; i < 6; i++){',
+      '    float an = float(i)*1.0472 + spin;',
+      '    vec2 o = vec2(cos(an), sin(an)) * gr * 1.6 * px;',
+      '    g += texture2D(u_tex, uv + o).rgb;',
+      '  }',
+      '  gl_FragColor = vec4(g / 5.0, 1.0);',
+      '}'
+    ].join('\n'),
+    // Modus "neu", Schritt B: Bild + hochgezogenes Leuchten zusammen (2 Abfragen pro Pixel)
+    comp: [
+      'uniform sampler2D u_tex;',
+      'uniform sampler2D u_glow;',
+      'void main(){',
+      '  vec2 uv = gl_FragCoord.xy / u_res;',
+      '  vec3 c = texture2D(u_tex, uv).rgb;',
+      '  vec3 g = texture2D(u_glow, uv).rgb;',
+      '  vec3 col = c + g*(0.8 + 0.6*u_build);',
+      '  col *= 1.0 + 0.35*u_bar*u_flash;',
+      '  col = col / (1.0 + 0.25*col);',
+      '  gl_FragColor = vec4(col, 1.0);',
+      '}'
     ].join('\n')
   });
 
@@ -278,15 +326,35 @@
   var VERT = 'attribute vec2 a; void main(){ gl_Position = vec4(a, 0.0, 1.0); }';
   var NAMES = ['u_time','u_res','u_bass','u_mid','u_treb','u_beat','u_bar','u_build','u_hue','u_flash'];
 
-  function AcidShaderPlayer(canvas) {
+  // opts.fast: true (Standard) = Spar-Tricks an; false = genau wie Build 30 (zum Vergleichen)
+  function AcidShaderPlayer(canvas, opts) {
     var gl = canvas.getContext('webgl', { antialias: false, alpha: false, powerPreference: 'high-performance' });
     if (!gl) throw new Error('Kein WebGL');
-    this.gl = gl; this.canvas = canvas; this.progs = {}; this.cur = null; this.errors = {};
+    this.gl = gl; this.canvas = canvas; this.progs = {}; this.cur = null; this.curId = null; this.errors = {};
+    this.fast = !(opts && opts.fast === false);
     this.fb = null; // Zwischenbilder für Nachzieh-Shader (werden erst bei Bedarf angelegt)
     var buf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW); // ein großes Dreieck
+    if (this.fast) this._noise();
   }
+  // Zufallsbild 256x256 für das Rauschen, fest auf Steckplatz 2 (wird nie umgesteckt)
+  AcidShaderPlayer.prototype._noise = function () {
+    var gl = this.gl, n = 256, d = new Uint8Array(n * n * 4), x = 1234567, i;
+    for (i = 0; i < n * n; i++) {
+      x = (x * 1103515245 + 12345) & 0x7fffffff;        // fester Zufall: jedes Mal dasselbe Bild
+      d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = (x >> 16) & 255; d[i * 4 + 3] = 255;
+    }
+    var t = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, n, n, 0, gl.RGBA, gl.UNSIGNED_BYTE, d);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    gl.activeTexture(gl.TEXTURE0);
+  };
   AcidShaderPlayer.prototype._compile = function (type, src) {
     var gl = this.gl, sh = gl.createShader(type);
     gl.shaderSource(sh, src); gl.compileShader(sh);
@@ -296,11 +364,11 @@
   AcidShaderPlayer.prototype._program = function (fragBody) {
     var gl = this.gl, p = gl.createProgram(), i;
     gl.attachShader(p, this._compile(gl.VERTEX_SHADER, VERT));
-    gl.attachShader(p, this._compile(gl.FRAGMENT_SHADER, PRELUDE + fragBody));
+    gl.attachShader(p, this._compile(gl.FRAGMENT_SHADER, (this.fast ? PRELUDE_FAST : PRELUDE) + fragBody));
     gl.bindAttribLocation(p, 0, 'a');
     gl.linkProgram(p);
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
-    var loc = { u_tex: gl.getUniformLocation(p, 'u_tex') };
+    var loc = { u_tex: gl.getUniformLocation(p, 'u_tex'), u_glow: gl.getUniformLocation(p, 'u_glow'), u_noise: gl.getUniformLocation(p, 'u_noise') };
     for (i = 0; i < NAMES.length; i++) loc[NAMES[i]] = gl.getUniformLocation(p, NAMES[i]);
     return { p: p, loc: loc };
   };
@@ -311,44 +379,68 @@
     if (!this.progs[id]) {
       try {
         var main = this._program(def.glsl);
-        if (def.feedback) main.post = this._program(def.post);
+        if (def.feedback && this.fast && def.glow) { main.glow = this._program(def.glow); main.comp = this._program(def.comp); }
+        else if (def.feedback) main.post = this._program(def.post);
         this.progs[id] = main;
       } catch (e) { this.errors[id] = String(e.message || e); return false; }
     }
-    this.cur = this.progs[id];
+    this.cur = this.progs[id]; this.curId = id;
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
     return true;
   };
+  // Vorbereiten ohne Anzeigen: übersetzen + ein Bild mit 1x1 Pixel zeichnen (der Treiber baut erst beim
+  // ersten Zeichnen wirklich alles fertig). Danach ist wieder der vorherige Shader aktiv.
+  // Nur aufrufen, solange die Fläche unsichtbar ist. Gibt die gebrauchte Zeit in ms zurück (oder -1 bei Fehler).
+  AcidShaderPlayer.prototype.warm = function (id) {
+    var t0 = performance.now(), prev = this.curId;
+    if (!this.use(id)) return -1;
+    this._render({ time: 0, hue: 0, flash: 1 }, true);
+    if (prev && prev !== id) this.use(prev); else if (!prev) { this.cur = null; this.curId = null; }
+    this.gl.finish();
+    return performance.now() - t0;
+  };
+  AcidShaderPlayer.prototype.warmAll = function () {
+    var ms = 0, i, r;
+    for (i = 0; i < SHADERS.length; i++) { r = this.warm(SHADERS[i].id); if (r > 0) ms += r; }
+    return ms;
+  };
+  function makeTarget(gl, w, h) {
+    var t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    var fbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+    gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+    return { tex: t, fbo: fbo };
+  }
   // Zwei Zwischenbilder (Ping-Pong): eins wird gelesen (letztes Bild), ins andere wird geschrieben.
+  // Im Modus "neu" dazu ein drittes in halber Größe fürs Leuchten.
   AcidShaderPlayer.prototype._targets = function (w, h) {
     var gl = this.gl, f = this.fb, i;
     if (f && f.w === w && f.h === h) return f;
-    if (f) for (i = 0; i < 2; i++) { gl.deleteTexture(f.tex[i]); gl.deleteFramebuffer(f.fbo[i]); }
-    f = { w: w, h: h, tex: [], fbo: [], src: 0 };
-    for (i = 0; i < 2; i++) {
-      var t = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, t);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      var fbo = gl.createFramebuffer();
-      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
-      gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
-      f.tex.push(t); f.fbo.push(fbo);
+    gl.activeTexture(gl.TEXTURE0);
+    if (f) {
+      for (i = 0; i < 2; i++) { gl.deleteTexture(f.tex[i]); gl.deleteFramebuffer(f.fbo[i]); }
+      if (f.glow) { gl.deleteTexture(f.glow.tex); gl.deleteFramebuffer(f.glow.fbo); }
     }
+    f = { w: w, h: h, tex: [], fbo: [], src: 0, glow: null, gw: 0, gh: 0 };
+    for (i = 0; i < 2; i++) { var r = makeTarget(gl, w, h); f.tex.push(r.tex); f.fbo.push(r.fbo); }
+    if (this.fast) { f.gw = Math.max(1, Math.ceil(w / 2)); f.gh = Math.max(1, Math.ceil(h / 2)); f.glow = makeTarget(gl, f.gw, f.gh); }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     this.fb = f;
     return f;
   };
-  AcidShaderPlayer.prototype._uniforms = function (prog, s) {
+  AcidShaderPlayer.prototype._uniforms = function (prog, s, rw, rh) {
     var gl = this.gl, L = prog.loc;
     gl.useProgram(prog.p);
     gl.uniform1f(L.u_time, s.time || 0);
-    gl.uniform2f(L.u_res, this.canvas.width, this.canvas.height);
+    gl.uniform2f(L.u_res, rw || this.canvas.width, rh || this.canvas.height);
     gl.uniform1f(L.u_bass, s.bass || 0);
     gl.uniform1f(L.u_mid, s.mid || 0);
     gl.uniform1f(L.u_treb, s.treb || 0);
@@ -358,33 +450,54 @@
     gl.uniform1f(L.u_hue, s.hue || 0);
     gl.uniform1f(L.u_flash, s.flash == null ? 1 : s.flash);
     if (L.u_tex) gl.uniform1i(L.u_tex, 0);
+    if (L.u_glow) gl.uniform1i(L.u_glow, 1);
+    if (L.u_noise) gl.uniform1i(L.u_noise, 2);
   };
   // s = { time, bass, mid, treb, beat, bar, build, hue, flash }
-  AcidShaderPlayer.prototype.draw = function (s) {
+  AcidShaderPlayer.prototype.draw = function (s) { this._render(s, false); };
+  AcidShaderPlayer.prototype._render = function (s, tiny) {
     if (!this.cur) return;
-    var gl = this.gl, w = this.canvas.width, h = this.canvas.height;
-    if (!this.cur.post) {
+    var gl = this.gl, w = this.canvas.width, h = this.canvas.height, P = this.cur;
+    var vw = tiny ? 1 : w, vh = tiny ? 1 : h;
+    if (!P.post && !P.glow) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      gl.viewport(0, 0, w, h);
-      this._uniforms(this.cur, s);
+      gl.viewport(0, 0, vw, vh);
+      this._uniforms(P, s);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       return;
     }
     var f = this._targets(w, h), src = f.src, dst = 1 - src;
     // Durchgang 1: altes Bild verzerren + abdunkeln + Neues dazumalen -> Zwischenbild
     gl.bindFramebuffer(gl.FRAMEBUFFER, f.fbo[dst]);
-    gl.viewport(0, 0, w, h);
+    gl.viewport(0, 0, vw, vh);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, f.tex[src]);
-    this._uniforms(this.cur, s);
+    this._uniforms(P, s);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-    // Durchgang 2: Zwischenbild mit Leuchten auf den Bildschirm
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, w, h);
-    gl.bindTexture(gl.TEXTURE_2D, f.tex[dst]);
-    this._uniforms(this.cur.post, s);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
-    f.src = dst;
+    if (P.glow) {
+      // Durchgang 2 (neu): Leuchten in halber Größe
+      gl.bindFramebuffer(gl.FRAMEBUFFER, f.glow.fbo);
+      gl.viewport(0, 0, tiny ? 1 : f.gw, tiny ? 1 : f.gh);
+      gl.bindTexture(gl.TEXTURE_2D, f.tex[dst]);
+      this._uniforms(P.glow, s, f.gw, f.gh);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      // Durchgang 3 (neu): Bild + Leuchten auf den Bildschirm
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, vw, vh);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, f.glow.tex);
+      gl.activeTexture(gl.TEXTURE0);
+      this._uniforms(P.comp, s);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    } else {
+      // Durchgang 2 (alt): Zwischenbild mit Leuchten (7 Abfragen pro Pixel) auf den Bildschirm
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, vw, vh);
+      gl.bindTexture(gl.TEXTURE_2D, f.tex[dst]);
+      this._uniforms(P.post, s);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+    if (!tiny) f.src = dst;     // beim Vorbereiten nicht umschalten: das echte Bild bleibt erhalten
   };
 
   window.ACID_SHADERS = SHADERS;
