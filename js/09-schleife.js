@@ -47,8 +47,6 @@ function perfLog(fps, t) {
 function perSecond(fps, t) {
   $('fps').textContent = fps;
   $('hz').textContent = '60';
-  if (isFlug() && shOp > 0.9) { flug.fpsSum += fps; flug.fpsN++; if (fps < flug.fpsMin) flug.fpsMin = fps; }
-  syncFlugBtn();
   perfLog(fps, t);
   fpsHist.push([t, fps]); while (fpsHist.length && t - fpsHist[0][0] > 60000) fpsHist.shift();
   if (!guard || t - lastSwitch < 3000 || t < brakeUntil || t < scanBusyUntil) { slowSecs = 0; return; }

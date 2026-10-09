@@ -160,7 +160,7 @@ function onSection(type, prev, P, t) {
       if (auto) nextPreset(0, moodTarget('drop'), false, 's');
       if (window.__AMX && toggles.mix) mxDrop();                 // Build 46: Mischpult gibt das angesparte Funken-Konto auf einmal aus
       else {
-        flash = reduceMotion ? 0.2 : (isFlug() ? 0.35 : 0.7);    // im Track-Flug blitzt schon die Wand selbst
+        flash = reduceMotion ? 0.2 : 0.7;
         burst(40);
       }
     }
@@ -204,7 +204,6 @@ function scanFrame(t) {
     if (preLogT !== nd) { preLogT = nd; rea('Drop-Aufbau: Drop in ' + Math.round((nd - ts) / (4 * A.beatS)) + ' Takten (bei ' + nd.toFixed(1) + ' s)'); }
   } else dropPre = 0;
   build = Math.max(build, dropPre);
-  flugAuto(A, ts, t);
   if (bi !== lastBi) {
     const prevBi = lastBi; lastBi = bi;
     // Kick-Puls auf dem Raster: kommt pünktlich auf dem Schlag, nicht erst nach der Erkennung

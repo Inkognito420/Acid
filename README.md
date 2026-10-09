@@ -35,19 +35,25 @@ Pruefen (laeuft auch bei jedem Push als GitHub-Aktion, `.github/workflows/pruefe
 
 Werkstatt-Schalter stehen an einer Stelle: Tabelle `TOGGLES` in `js/01-grundlagen.js` (Name, Gruppe, Beschriftung, Standard, Hinweis). Die Knoepfe entstehen daraus.
 
-## Track-Flug (ab Build 36, seit Build 38 aus)
+## Scan-Warteschlange (ab Build 48)
 
-Eigener Shader (`flug-track` in `acid-shader.js`): Der Scan eines Tracks wird als
-Tunnel gezeichnet, in dem man auf der Zeitachse nach vorne fliegt. Die naechsten
-Takte sind schon zu sehen: Kicks als Rahmen, Hi-Hats als Punkte an der Wand, Mitten
-als Boegen, Abschnittsgrenzen als Ringe, der Drop als Tor.
+`js/14-track-scan.js`. Es laeuft immer nur ein Scan, und gescannt wird nur, was gebraucht wird: der laufende Track
+zuerst, danach als Vorlauf der naechste der Liste. Wer schnell durch die Liste springt, stoesst keine unnoetigen Scans
+mehr an: wartende Auftraege fuer andere Tracks fallen weg, ein laufender Scan hoert am naechsten Teilstueck (60 s Ton)
+auf (`alive()` in `analyzeFile`). Ein verworfener Scan wird nicht gemerkt und startet bei Bedarf neu. Im Test (5 Tracks,
+schnell durchgeskippt) war der Scan des gehoerten Tracks nach 3 statt 9 Sekunden da.
 
-- Automatisch: 12 Takte vor einem Drop bis 8 Takte danach (Schalter "Track-Flug bei
-  Drops" in der Werkstatt, Standard aus).
-- Knopf "Flug": seit Build 38 ausgeblendet (hielt die Automatik an). Nur noch ueber die Werkstatt einschaltbar.
-- Texturformat (Einheit 3): 4 Schritte pro Schlag, R Kick, G Hi-Hat, B Mitten,
-  A Abschnitt (siehe `AcidShaderPlayer.buildTrack`).
-- Debug: Seite mit `?debug` oeffnen, dann `window.__FLUG`.
+Dekodiert wird wie immer in der Rate der Audio-Engine, die Teilstuecke rechnen sie beim Rendern auf 22,05 kHz um. Das
+gehoert zu den Messwerten (die Umrechnung hat keinen Tiefpass: Hoehen ueber 11 kHz falten ins Band darunter). Nur bei
+sehr langen Tracks (geschaetzter Puffer ueber 200 MB, etwa 9 Minuten Stereo) oder unbekannter Laenge wird gleich in
+22,05 kHz dekodiert: das braucht weniger als die Haelfte des Speichers. Tempo, Abschnitte, Drops und Tonart bleiben
+dabei gleich, die Hoehen-Messwerte (Helligkeit, Filter) verschieben sich. Das Protokoll sagt es:
+„Scan: dekodiert mit … Hz … MB im Speicher (sparsam, lange Datei)“.
+
+## Track-Flug (Build 36 bis 47, entfernt in Build 48)
+
+Der Track-Flug (Tunnel durch den gescannten Track) war seit Build 38 aus und ist entfernt. Wer ihn zurueckhaben will:
+`git checkout stand-build46` (Tag), Shader `flug-track` in `acid-shader.js`, Teil 3 und die Verweise in 08, 10, 12, 15.
 
 ## Klangmesser (ab Build 43)
 

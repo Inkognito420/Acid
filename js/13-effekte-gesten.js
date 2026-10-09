@@ -124,7 +124,6 @@ canvas.addEventListener('pointerup', e => {
       clearTimeout(tapTimer); lastTapT = 0;
       if (hudWokeByTap) { hud.classList.add('off'); hudWokeByTap = false; }   // Doppeltipp ist ein Schnitt, keine Leiste
       flash = reduceMotion ? 0.2 : 0.6; burst(30); pulse = Math.max(pulse, 0.05);
-      flugHandOff();
       nextPreset(0, moodTarget('drop'), false, 'd');
     } else {
       lastTapT = now;

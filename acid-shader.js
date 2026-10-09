@@ -1,6 +1,6 @@
 /* ============================================================
    Acid Milkdrop: eigene Shader
-   Stand: 08.10.2026 (Build 36)
+   Stand: 09.10.2026 (Build 48; der Track-Flug von Build 36 ist entfernt, Stand davor: Tag stand-build46)
 
    Was ist das?
    Sieben selbst geschriebene Bild-Effekte (Fragment-Shader), je zwei pro Stil
@@ -23,17 +23,6 @@
               (Takt-Eins hellt nur helle Stellen auf, Schwarz bleibt schwarz)
 
    Alle Schleifen sind klein und fest (iPhone-freundlich).
-
-   Build 36 – Track-Flug (Nr. 8, style 'flug'): Du fliegst durch einen Tunnel, in dem die nächsten Takte des
-   Tracks schon vor dir liegen. Jeder Kick ist ein Rahmen, der auf dich zukommt und genau auf dem Schlag den
-   Bildrand erreicht; Hi-Hats sind Punkte an der Wand, Mitten (303, Synths) kurze Bögen, Abschnittswechsel
-   große Ringe in der Farbe des neuen Abschnitts, und der nächste Drop ist eine leuchtende Wand am Ende des
-   Tunnels, die größer wird und beim Drop durchbrochen wird.
-   Dazu bekommt der Spieler den ganzen Track vorab als Textur (AcidShaderPlayer.buildTrack(A) -> setTrack):
-   pro Schritt (1/4 Schlag) ein Texel RGBA = Kick-Stärke | Hat (Stärke*16 + Feinversatz) | Mitte (ebenso) |
-   Abschnitt (Typ*32 + 16 beim ersten Schritt eines Abschnitts). Die Textur liegt auf Steckplatz 3.
-   Uniforms dazu: u_ti = (Texturbreite, -höhe, Schritte, Takt-Versatz), u_fl = (ganze Schläge, Rest,
-   Schläge bis zum nächsten Drop, Schläge seit dem letzten Drop).
 
    Build 31 – drei Spar-Tricks (Modus "neu", Standard; "alt" = wie Build 30):
      1. Echo-Ring: Leuchten wird auf einem Zwischenbild in halber Breite/Höhe
@@ -333,164 +322,9 @@
     ].join('\n')
   });
 
-  /* ---------- TRACK-FLUG: durch den Track fliegen (Build 36) ---------- */
-
-  // 8) Track-Flug. Perspektive: Ein Rahmen, der b Schläge vor dir liegt, hat die Größe RHO0 / (1 + KAP*b)
-  //    (Bildrand = 1, also genau auf dem Schlag am Bildrand). Umgekehrt weiß jeder Bildpunkt aus seinem Abstand
-  //    zur Mitte, wie viele Schläge voraus er zeigt (b), und liest dort direkt in der Track-Textur nach:
-  //    keine Schleife über alle Ereignisse, nur ca. 5 Abfragen pro Bildpunkt.
-  //    Rahmenform: "Superellipse" (abgerundetes Rechteck in der Form des Bildschirms), Kamera schwankt leicht.
-  SHADERS.push({
-    id: 'flug-track', style: 'flug', track: true, name: 'Track-Flug',
-    glsl: [
-      '#define SPB 4.0',
-      '#define RHO0 1.0',
-      'uniform sampler2D u_trk;',
-      'uniform vec4 u_ti;',
-      'uniform vec4 u_fl;',
-      'vec4 trk(float s){',
-      '  float top = max(u_ti.z - 1.0, 0.0);',
-      '  float ok = step(0.0, s) * step(s, top);',
-      '  s = clamp(s, 0.0, top);',
-      '  float row = floor(s / u_ti.x);',
-      '  float col = s - row * u_ti.x;',
-      '  return floor(texture2D(u_trk, vec2((col + 0.5) / u_ti.x, (row + 0.5) / u_ti.y)) * 255.0 + 0.5) * ok;',
-      '}',
-      'float h11(float p){ p = fract(mod(p, 8192.0) * 0.1031); p *= p + 33.33; p *= p + p; return fract(p); }',
-      'float wrapA(float a){ return a - 6.2831853 * floor((a + 3.1415927) / 6.2831853); }',
-      'float ln(float d, float w, float px){',
-      '  float ww = max(w, px);',
-      '  return (1.0 - smoothstep(0.0, ww, abs(d))) * (w / ww);',
-      '}',
-      'vec3 secLook(float t){',
-      '  if (t < 0.5) return vec3(0.52, 0.55, 0.55);',
-      '  if (t < 1.5) return vec3(0.00, 0.80, 1.00);',
-      '  if (t < 2.5) return vec3(0.64, 0.60, 0.62);',
-      '  if (t < 3.5) return vec3(0.90, 0.70, 0.95);',
-      '  if (t < 4.5) return vec3(0.08, 0.90, 1.25);',
-      '  return vec3(0.52, 0.50, 0.45);',
-      '}',
-      'void main(){',
-      '  vec2 q = (gl_FragCoord.xy / u_res - 0.5) * 2.0;',
-      '  float rl = 0.035 * sin(u_time * 0.23);',
-      '  q = mat2(cos(rl), -sin(rl), sin(rl), cos(rl)) * q;',
-      '  q += vec2(0.06 * sin(u_time * 0.31), 0.05 * cos(u_time * 0.19));',
-      '  vec2 q2 = q * q;',
-      '  float rho = sqrt(sqrt(q2.x * q2.x + q2.y * q2.y)) + 1e-3;',
-      '  float ang = atan(q.y, q.x);',
-      '  float kap = 0.5 + 0.2 * u_build;',
-      '  float b = (RHO0 / rho - 1.0) / kap;',
-      '  float pxr = 2.0 / u_res.y;',
-      '  float dbpx = RHO0 / (kap * rho * rho) * pxr;',
-      '  float dapx = pxr / rho;',
-      '  float fog = exp(-max(b, 0.0) * 0.075) * smoothstep(-0.7, -0.1, b);',
-      // Stelle im Track: Schritte relativ zur ganzen Schlagzahl
-      '  float xr = u_fl.y + b;',
-      '  float xs = xr * SPB;',
-      '  float nbs = u_fl.x * SPB;',
-      '  float s0 = nbs + floor(xs);',
-      '  vec4 c0 = trk(s0);',
-      '  vec3 L = secLook(floor(c0.a / 32.0));',
-      '  float hue = u_hue + L.x;',
-      // Schlag-Linien, Takt-Linien, Kick-Rahmen, Abschnittsgrenzen
-      '  float kbr = floor(xr + 0.5);',
-      '  float dk = xr - kbr;',
-      '  float ks = (u_fl.x + kbr) * SPB;',
-      '  vec4 tk = trk(ks);',
-      '  float inr = step(0.0, ks) * step(ks, u_ti.z - 1.0);',
-      '  float kick = tk.r / 255.0;',
-      '  float stFlag = floor(mod(tk.a, 32.0) / 16.0);',
-      '  vec3 Lk = secLook(floor(tk.a / 32.0));',
-      '  float barLine = 1.0 - step(0.5, mod(u_fl.x + kbr - u_ti.w, 4.0));',
-      '  float grid = ln(dk, 0.03, dbpx) * inr * (0.10 + 0.30 * barLine);',
-      '  float bw = 1.0 + 0.5 * barLine;',
-      '  float ring = (ln(dk, 0.075 * bw, dbpx) + 0.35 * ln(dk, 0.28 * bw, dbpx)) * kick * (1.0 + 0.35 * barLine);',
-      '  float wB = 0.11 + 0.0012 * b * b;',
-      '  float bnd = stFlag * (ln(dk, wB, dbpx) + 0.5 * ln(dk, 4.0 * wB, dbpx));',
-      // Hi-Hats (Punkte an der Wand) und Mitten (Bögen) aus den drei Schritten um den Bildpunkt.
-      // Maß an der Wand: Abstand am Rahmen des Bildrands in halber Bildhöhe (Sehne), damit die Punkte am nahen Rand rund aussehen
-      '  float asp = u_res.x / u_res.y;',
-      '  vec2 pp = q / rho * vec2(asp, 1.0);',
-      '  float hatS = 0.0;',
-      '  float midS = 0.0;',
-      '  for (int i = 0; i < 3; i++){',
-      '    float sN = s0 + float(i) - 1.0;',
-      '    vec4 e = trk(sN);',
-      '    float rel = sN - nbs;',
-      '    float hv = floor(e.g / 16.0);',
-      '    float ho = e.g - hv * 16.0;',
-      '    float dxb = (xs - (rel + (ho + 0.5) / 16.0)) / SPB;',
-      '    float ah = h11(sN) * 6.2831853;',
-      '    vec2 ce = vec2(cos(ah), sin(ah));',
-      '    ce /= sqrt(sqrt(ce.x * ce.x * ce.x * ce.x + ce.y * ce.y * ce.y * ce.y));',
-      '    ce *= vec2(asp, 1.0);',
-      '    float sc = 0.5 * length(ce);',
-      '    float ch = min(length(pp - ce), length(pp + ce));',
-      '    float R = 0.016 + 0.0016 * hv;',
-      '    float RR = max(R, max(dbpx * sc, pxr / rho));',
-      '    float d = length(vec2(dxb * sc, ch));',
-      '    float hc = 1.0 - smoothstep(0.0, RR, d);',
-      '    float hh = 1.0 - smoothstep(0.0, 2.6 * RR, d);',
-      '    hatS += step(0.5, hv) * (hv / 15.0) * (hc * hc + 0.35 * hh * hh) * (R * R) / (RR * RR);',
-      '    float mv = floor(e.b / 16.0);',
-      '    float mo = e.b - mv * 16.0;',
-      '    float dxm = (xs - (rel + (mo + 0.5) / 16.0)) / SPB;',
-      '    float am = h11(sN + 77.0) * 6.2831853;',
-      '    vec2 cm = vec2(cos(am), sin(am));',
-      '    cm /= sqrt(sqrt(cm.x * cm.x * cm.x * cm.x + cm.y * cm.y * cm.y * cm.y));',
-      '    cm *= vec2(asp, 1.0);',
-      '    float cmh = min(length(pp - cm), length(pp + cm));',
-      '    float hw = 0.16 + 0.02 * mv;',
-      '    midS += step(0.5, mv) * (mv / 15.0) * (1.0 - smoothstep(hw * 0.55, hw, cmh)) * ln(dxm, 0.05, dbpx);',
-      '  }',
-      // Speichen entlang des Tunnels
-      '  float su = ang * 16.0 / 6.2831853;',
-      '  float sd = abs(fract(su + 0.5) - 0.5);',
-      '  float dash = mix(0.5, 0.5 + 0.5 * cos(6.2831853 * xr * 2.0), 1.0 - smoothstep(0.1, 0.4, dbpx));',
-      '  float spoke = (1.0 - smoothstep(0.0, 0.03 + dapx * 2.5, sd)) * smoothstep(0.03, 0.2, rho) * 0.16 * (0.3 + 0.7 * dash);',
-      // Farben
-      '  vec3 cK = hsv(hue, L.y, 1.0);',
-      '  vec3 cB = hsv(u_hue + Lk.x, Lk.y * 0.6, 1.0);',
-      '  vec3 cH = mix(vec3(1.0), hsv(hue + 0.5, 0.5, 1.0), 0.4);',
-      '  vec3 cM = hsv(hue + 0.30, 1.0, 1.0);',
-      '  vec3 col = cK * (grid + 1.5 * ring) * L.z;',
-      '  float fogB = exp(-max(b, 0.0) * 0.03) * smoothstep(-0.7, -0.1, b);',
-      '  col += cH * hatS * 1.6 * L.z + cM * midS * 1.8 * L.z;',
-      '  col += cK * spoke * (0.5 + 0.8 * u_bass) * L.z;',
-      '  col *= fog * (0.9 + 0.5 * u_build + 0.25 * u_beat);',
-      '  col += cB * bnd * 1.6 * fogB;',
-      '  col += mix(cK, vec3(1.0), 0.5) * ln(rho - 0.965, 0.010, pxr) * (0.07 + 0.55 * u_beat + 0.25 * u_bar) * L.z * u_flash;',
-      '  col += hsv(hue, 0.5, 1.0) * (0.03 + 0.05 * u_bass) / (rho * rho * 6.0 + 0.15) * L.z;',
-      // Drop-Wand am Ende des Tunnels
-      '  float bd = u_fl.z;',
-      '  float slab = step(0.0, bd) * step(bd, b);',
-      '  float rhoD = RHO0 / (1.0 + kap * max(bd, 0.0));',
-      '  float fr = clamp(rho / rhoD, 0.0, 1.0);',
-      '  float nr = 1.0 - smoothstep(2.0, 32.0, bd);',
-      '  float wave = 0.5 + 0.5 * sin(fr * 16.0 - u_time * 4.0);',
-      '  float rays = 0.5 + 0.5 * sin(ang * 10.0 + u_time * 0.7 + fr * 4.0);',
-      '  vec3 face = hsv(u_hue + 0.08 + 0.16 * fr, 0.7 - 0.3 * (1.0 - fr), 1.0) * (0.35 + 0.65 * (1.0 - fr)) * (0.55 + 0.25 * wave + 0.2 * rays);',
-      '  face += vec3(1.0) * exp(-fr * 3.0) * (0.3 + 0.7 * nr);',
-      '  face *= (0.8 + 0.6 * nr) * (0.9 + 0.25 * u_beat);',
-      '  float fade = smoothstep(0.0, 0.4, bd);',
-      '  col = mix(col, face, slab * fade * 0.82);',
-      '  float rim = ln(b - bd, 0.14, dbpx) * step(0.0, bd) * fade;',
-      '  col += hsv(u_hue + 0.1, 0.35, 1.0) * rim * (0.6 + 1.6 * nr);',
-      // Knall nach dem Drop: Druckwelle von der Mitte
-      '  float sdr = u_fl.w;',
-      '  float shock = ln(rho - (0.06 + 1.4 * (1.0 - exp(-sdr * 1.5))), 0.05 + 0.05 * sdr, 0.003) * exp(-sdr * 0.9) * step(0.0, sdr);',
-      '  col += hsv(u_hue + 0.08, 0.3, 1.0) * shock * 1.4 * u_flash;',
-      '  col *= 1.0 + 0.8 * exp(-sdr * 1.2) * step(0.0, sdr) * u_flash;',
-      '  col *= 1.0 + 0.3 * u_bar * u_flash;',
-      '  col = col / (1.0 + 0.25 * col);',
-      '  gl_FragColor = vec4(col, 1.0);',
-      '}'
-    ].join('\n')
-  });
-
   /* ---------- Mini-Spieler: eigene Fläche, ein Shader aktiv ---------- */
   var VERT = 'attribute vec2 a; void main(){ gl_Position = vec4(a, 0.0, 1.0); }';
-  var NAMES = ['u_time','u_res','u_bass','u_mid','u_treb','u_beat','u_bar','u_build','u_hue','u_flash','u_ti','u_fl'];
+  var NAMES = ['u_time','u_res','u_bass','u_mid','u_treb','u_beat','u_bar','u_build','u_hue','u_flash'];
 
   // opts.fast: true (Standard) = Spar-Tricks an; false = genau wie Build 30 (zum Vergleichen)
   function AcidShaderPlayer(canvas, opts) {
@@ -503,7 +337,6 @@
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW); // ein großes Dreieck
     if (this.fast) this._noise();
-    this._trackInit();
   }
   // Zufallsbild 256x256 für das Rauschen, fest auf Steckplatz 2 (wird nie umgesteckt)
   AcidShaderPlayer.prototype._noise = function () {
@@ -522,66 +355,6 @@
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
     gl.activeTexture(gl.TEXTURE0);
   };
-  // Track-Textur (nur der Track-Flug liest sie) fest auf Steckplatz 3. Bis ein Track da ist: 1x1 Platzhalter, Schrittzahl 0.
-  AcidShaderPlayer.prototype._trackInit = function () {
-    var gl = this.gl;
-    this.trkTex = gl.createTexture();
-    this.trk = { w: 1, h: 1, n: 0, barPhase: 0, id: null };
-    gl.activeTexture(gl.TEXTURE3);
-    gl.bindTexture(gl.TEXTURE_2D, this.trkTex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.activeTexture(gl.TEXTURE0);
-  };
-  // T kommt von AcidShaderPlayer.buildTrack(A). id: Merker, welcher Track gerade hochgeladen ist.
-  AcidShaderPlayer.prototype.setTrack = function (T, id) {
-    var gl = this.gl;
-    if (!T) { this.trk.n = 0; this.trk.id = null; return; }
-    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-    gl.activeTexture(gl.TEXTURE3);
-    gl.bindTexture(gl.TEXTURE_2D, this.trkTex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, T.w, T.h, 0, gl.RGBA, gl.UNSIGNED_BYTE, T.data);
-    gl.activeTexture(gl.TEXTURE0);
-    this.trk = { w: T.w, h: T.h, n: T.n, barPhase: T.barPhase, id: id == null ? null : id };
-  };
-  // Den ganzen Track als Textur aufbereiten. A = Ergebnis von analyzeEnvelopes (grid, beat0, beatS, barPhase, sections, kA, onM, onH, duration).
-  // Schritte: 4 pro Schlag, Schritt 0 = erster Schlag des Rasters (beat0). Zeilen von 2048 Texeln, damit lange Tracks passen.
-  var TRK_SPB = 4, TRK_W = 2048, TRK_TYPE = { intro: 0, groove: 1, break: 2, buildup: 3, drop: 4, outro: 5 };
-  AcidShaderPlayer.buildTrack = function (A) {
-    if (!A || !A.beatS || !(A.duration > 0)) return null;
-    var SPB = TRK_SPB, beats = Math.max(1, Math.ceil((A.duration - A.beat0) / A.beatS) + 1), n = beats * SPB;
-    var rows = Math.max(1, Math.ceil(n / TRK_W)), d = new Uint8Array(TRK_W * rows * 4), i, k, j;
-    var cl = function (v) { return v < 0 ? 0 : v > 1 ? 1 : v; };
-    // Abschnitte (Typ + Startmarke), die Abschnitte beginnen auf Takt-Eins = ganzen Schlägen
-    var secs = A.sections || [];
-    for (j = 0; j < secs.length; j++) {
-      var sc = secs[j], code = (TRK_TYPE[sc.type] == null ? 1 : TRK_TYPE[sc.type]) * 32;
-      var a = Math.max(0, Math.round((sc.t0 - A.beat0) / A.beatS * SPB)), e = Math.min(n, Math.round((sc.t1 - A.beat0) / A.beatS * SPB));
-      if (j === secs.length - 1) e = n;
-      if (j === 0) a = 0;
-      for (i = a; i < e; i++) d[i * 4 + 3] = code;
-      if (j > 0 && a < n) d[a * 4 + 3] = code + 16;
-    }
-    // Kicks: nur echte (Stärke ab 0,35), genau auf dem Schlag
-    if (A.kA) for (k = 0; k < A.kA.length && k * SPB < n; k++) if (A.kA[k] >= 0.35) d[k * SPB * 4] = Math.round(255 * cl(A.kA[k]));
-    // Hats (Kanal G) und Mitten (Kanal B): Stärke 1..15 in den oberen 4 Bit, Feinversatz im Schritt in den unteren 4 Bit
-    var put = function (list, ch) {
-      if (!list) return;
-      for (var p = 0; p + 1 < list.length; p += 2) {
-        var x = (list[p] - A.beat0) / A.beatS * SPB;
-        if (!(x >= 0) || x >= n) continue;
-        var st = Math.floor(x), off = Math.min(15, Math.floor((x - st) * 16)), sv = 1 + Math.floor(cl(list[p + 1]) * 14.999);
-        var o = st * 4 + ch;
-        if (d[o] === 0 || (d[o] >> 4) < sv) d[o] = sv * 16 + off;
-      }
-    };
-    put(A.onH, 1); put(A.onM, 2);
-    return { w: TRK_W, h: rows, n: n, spb: SPB, barPhase: A.barPhase || 0, data: d };
-  };
   AcidShaderPlayer.prototype._compile = function (type, src) {
     var gl = this.gl, sh = gl.createShader(type);
     gl.shaderSource(sh, src); gl.compileShader(sh);
@@ -595,7 +368,7 @@
     gl.bindAttribLocation(p, 0, 'a');
     gl.linkProgram(p);
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
-    var loc = { u_tex: gl.getUniformLocation(p, 'u_tex'), u_glow: gl.getUniformLocation(p, 'u_glow'), u_noise: gl.getUniformLocation(p, 'u_noise'), u_trk: gl.getUniformLocation(p, 'u_trk') };
+    var loc = { u_tex: gl.getUniformLocation(p, 'u_tex'), u_glow: gl.getUniformLocation(p, 'u_glow'), u_noise: gl.getUniformLocation(p, 'u_noise') };
     for (i = 0; i < NAMES.length; i++) loc[NAMES[i]] = gl.getUniformLocation(p, NAMES[i]);
     return { p: p, loc: loc };
   };
@@ -679,14 +452,8 @@
     if (L.u_tex) gl.uniform1i(L.u_tex, 0);
     if (L.u_glow) gl.uniform1i(L.u_glow, 1);
     if (L.u_noise) gl.uniform1i(L.u_noise, 2);
-    if (L.u_trk) {
-      var T = this.trk, nb = s.nb || 0, nb0 = Math.floor(nb);
-      gl.uniform1i(L.u_trk, 3);
-      gl.uniform4f(L.u_ti, T.w, T.h, T.n, T.barPhase);
-      gl.uniform4f(L.u_fl, nb0, nb - nb0, s.dropIn == null ? 1e3 : s.dropIn, s.sinceDrop == null ? 1e3 : s.sinceDrop);
-    }
   };
-  // s = { time, bass, mid, treb, beat, bar, build, hue, flash }; nur Track-Flug: nb (Schläge seit beat0), dropIn, sinceDrop (Schläge)
+  // s = { time, bass, mid, treb, beat, bar, build, hue, flash }
   AcidShaderPlayer.prototype.draw = function (s) { this._render(s, false); };
   AcidShaderPlayer.prototype._render = function (s, tiny) {
     if (!this.cur) return;

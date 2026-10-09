@@ -82,8 +82,8 @@ function snapshot() {
   } catch (e) { return 'Status nicht lesbar: ' + e.message; }
 }
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD = 'Build 47 · Offline-Betrieb (Service Worker), Schalter-Tabelle, Prüfungen';
-const BUILD_NO = 47;
+const BUILD = 'Build 48 · Scan-Warteschlange (nur gebrauchte Scans), sparsame Dekodierung für lange Tracks, Track-Flug entfernt';
+const BUILD_NO = 48;
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);
@@ -203,7 +203,6 @@ const TOGGLES = [
   ["phrase", "Bildwechsel", "Phrasen-Sync", true, "Wechsel auf Phrasen und Abschnitten im Takt"],
   ["drop", "Bildwechsel", "Drop-Cut", true, "Harter Schnitt mit Blitz im Drop"],
   ["own", "Bildwechsel", "Eigene Shader", true, "Ab und zu kommt einer der eigenen Shader (Peak Time, Driving, Acid) statt eines Milkdrop-Presets, passend zum Abschnitt"],
-  ["flug", "Bildwechsel", "Track-Flug bei Drops", false, "Zeigt automatisch den Track-Flug, wenn ein Drop naht (ab 12 Takten vorher bis 8 Takte danach). Nur bei gescannten Tracks."],
   ["build", "Effekte", "Build-up", true, "Spannung vor dem Drop: Zoom, Vignette, Funken"],
   ["pulse", "Effekte", "Kick-Puls", !reduceMotion, "Bild pumpt mit dem Kick"],
   ["spark", "Effekte", "Hats & Snares", !reduceMotion, "Funken und Ringe auf Hi-Hats und Snares"],
@@ -225,8 +224,7 @@ for (const [k, grp, label, def, tip] of TOGGLES) {
   box.appendChild(b);
 }
 const toggles = Object.assign({}, TOG_DEFAULT, savedToggles || {});
-// Build 38: Track-Flug raus (Emmo: hat alles kaputt gemacht). Einmalig auch bei gespeicherten Schaltern ausschalten.
-if (!store.get('am-flug-off-38', false)) { toggles.flug = false; store.set('am-toggles', toggles); store.set('am-flug-off-38', true); }
+delete toggles.flug;                              // Build 48: der Track-Flug ist entfernt, ein alter gespeicherter Schalterstand dazu fällt weg
 
 const beat = { t: performance.now(), n: 0, state: 'warten', lastKick: 0, kickStreak: 0, breakStart: 0, iois: [] };
 let levelAvg = 0, lastT = performance.now(), sectionChangeT = 0, sectionBeat0 = 0;
@@ -264,7 +262,7 @@ const snd = { kick: 0, hat: 0, acid: 0 };
 
 // Track-Liste und Scan-Zustand
 const queue = []; let qi = -1, curFile = null, curAnalysis = null, scanType = null, lastBi = null;
-const scanCache = new Map(); let scanChain = Promise.resolve();
+const scanCache = new Map();                     // Datei -> Ergebnis des Scans (Warteschlange und Abbruch: js/14-track-scan.js)
 let scanBusyUntil = 0;                           // Build 44: solange ein Scan rechnet (und 3 s danach) zählt die Lastbremse keine langsamen Sekunden
 
 window.__AM_STEP = 1;

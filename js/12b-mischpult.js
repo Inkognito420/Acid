@@ -194,7 +194,7 @@ function mxRing() {
 // Drop: alles, was angespart ist, auf einmal raus
 function mxDrop() {
   const k = MX.konto, n = Math.round(18 + 70 * k);
-  flash = reduceMotion ? 0.2 : (isFlug() ? 0.35 : 0.3 + 0.45 * k);
+  flash = reduceMotion ? 0.2 : 0.3 + 0.45 * k;
   burst(n);
   if (toggles.pulse) { const P = scanActive() ? curAnalysis.beatS : 60 / bpm; mxKick(MX.z, Math.min(0.1, 0.05 + 0.05 * k), 2 * Math.PI / P, 0.45); }
   rea('Mischpult · Drop: Konto ' + Math.round(100 * k) + ' % → ' + n + ' Funken, Blitz ' + Math.round(100 * flash) + ' %');

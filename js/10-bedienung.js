@@ -14,17 +14,9 @@ for (const k in togIds) {
     if (k === 'journal') { rea('Mitschreiben: ' + (toggles.journal ? 'an' : 'aus (bisherige Mitschrift bleibt, es kommt nichts dazu)')); jrSplit('x'); jrInfo(); }
     if (k === 'mix') rea('Mischpult (Körper & Funken): ' + (toggles.mix ? 'an' : 'aus (Effekte wie vor Build 46)'));
     if (k === 'instr') rea('Instrumente hören: ' + (toggles.instr ? 'an (Kick, Mitten, Höhen einzeln)' : 'aus (Milkdrop hört wie vorher Bass, Mitte, Höhen)'));
-    if (k === 'own' && !toggles.own && shCur && !(isFlug() && flug.mode)) nextPreset(1.5, undefined, false, 'x');
-    if (k === 'flug') rea('Track-Flug bei Drops: ' + (toggles.flug ? 'an (ab 12 Takten vor einem Drop)' : 'aus (nur mit dem Knopf „Flug“)'));
+    if (k === 'own' && !toggles.own && shCur) nextPreset(1.5, undefined, false, 'x');
   });
 }
-$('flugBtn').addEventListener('click', () => {
-  if (flug.mode) { flug.mode = false; if (isFlug()) flugLeave('Knopf', 'x'); syncFlugBtn(); return; }   // Dauer-Modus an: nochmal tippen = aus
-  if (isFlug()) { flug.mode = true; flug.endTs = 0; rea('Track-Flug: bleibt an (Knopf)'); syncFlugBtn(); sayFor('Der Track-Flug bleibt an. Nochmal „Flug“ tippen oder Wischen beendet ihn.'); return; }   // läuft gerade von selbst: festhalten
-  if (flugReady(true)) { flug.mode = true; flugStart('hand'); syncFlugBtn(); return; }
-  if (curFile && !micOn && !curAnalysis) { flug.mode = true; syncFlugBtn(); sayFor('Der Track-Flug startet, sobald der Scan des Tracks fertig ist.'); return; }
-  sayFor('Der Track-Flug braucht einen Track mit festem Takt. Spiel einen Track ab (Mikro geht nicht).');
-});
 $('fineBtn').addEventListener('click', () => {
   const open = $('fine').hidden; $('fine').hidden = !open;
   $('fineBtn').setAttribute('aria-expanded', String(open)); $('fineBtn').classList.toggle('hot', open);

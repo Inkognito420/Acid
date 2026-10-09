@@ -42,7 +42,7 @@ async function playAt(i) {
 function applyScanFor(f) {
   ensureScan(f).then(A => {
     if (curFile !== f || micOn) return;
-    if (flug.mode && !(A && !A.skipped && A.grid)) { flug.mode = false; syncFlugBtn(); sayFor('Der Track-Flug geht bei diesem Track nicht: kein fester Takt erkannt oder zu lang für den Scan.'); }
+    if (A && A.skipped === SCAN_STOP.skipped) return;   // Scan wurde verworfen (Track war kurz nicht gefragt): der neue Auftrag meldet sich selbst
     if (!A || A.skipped) {
       setTrackInfo(A && A.skipped === 'lang' ? 'langer Mix, läuft live' : 'läuft live');
       erg('Kein Scan: ' + (A && A.skipped ? A.skipped : 'fehlgeschlagen') + ', läuft live');
@@ -96,7 +96,6 @@ async function startMic() {
   micStream = stream; micNode = ctx.createMediaStreamSource(stream); micOn = true;
   micGainSaved = +gainEl.value; if (micGainSaved !== 1) { gainEl.value = 1; applyGain(); }   // der Auto-Pegel regelt das Mikro; ein hoher Regler würde zusätzlich übersteuern
   curAnalysis = null; scanType = null; lastBi = null; $('timeline').hidden = true;
-  flug.mode = false; syncFlugBtn();                  // Track-Flug braucht den Scan, mit Mikro geht er nicht
   resetBeat(); agcReset(); applyLat(); jrSplit('k');
   connect(micNode);                                  // nur in die Analyse, nie zu den Lautsprechern (sonst Rückkopplung)
   $('intro').hidden = true; setTrackInfo(); $('track').textContent = 'Mikrofon · Umgebung, live'; say('');
