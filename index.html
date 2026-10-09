@@ -135,7 +135,7 @@ a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px sol
     <button id="prev" type="button" aria-label="Vorheriges Preset">◀</button>
     <button id="next" type="button" aria-label="Nächstes Preset">▶</button>
     <button id="fav" type="button" aria-pressed="false" aria-label="Preset als Favorit markieren" title="Favorit: kommt öfter dran">☆</button>
-    <button id="flugBtn" type="button" aria-pressed="false" aria-label="Track-Flug an oder aus" title="Track-Flug: Du fliegst durch den Track und siehst die nächsten Takte schon vor dir, den Drop als Wand am Ende des Tunnels. Bleibt an, bis du nochmal tippst (nur bei gescannten Tracks).">Flug</button>
+    <button id="flugBtn" type="button" hidden aria-pressed="false" aria-label="Track-Flug an oder aus" title="Track-Flug: Du fliegst durch den Track und siehst die nächsten Takte schon vor dir, den Drop als Wand am Ende des Tunnels. Bleibt an, bis du nochmal tippst (nur bei gescannten Tracks).">Flug</button>
     <button id="auto" type="button" class="hot" hidden>Auto</button>
     <button id="guard" type="button" class="hot" title="Überspringt Presets, die keine 60 fps schaffen" hidden>Wächter</button>
     <button id="fineBtn" type="button" aria-expanded="false" aria-controls="fine">Mehr</button>
@@ -563,8 +563,8 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 37 · Alles auf Auto: aufgeräumte Leiste';
-  const BUILD_NO = 37;
+  const BUILD = 'Build 38 · Track-Flug raus';
+  const BUILD_NO = 38;
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -677,8 +677,10 @@ function analyzeEnvelopes(env, hopS) {
   const savedToggles = store.get('am-toggles', null);
   const reduceMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
   // Build 37: so ist alles gedacht (Automatik). Werkstatt-Schalter weichen davon ab, „Alles auf Auto“ setzt zurück.
-  const TOG_DEFAULT = { auto: true, mood: true, phrase: true, drop: true, build: true, pulse: !reduceMotion, spark: !reduceMotion, acid: true, bar: true, morph: true, tune: true, own: true, flug: true, name: true, instr: true, journal: true };
+  const TOG_DEFAULT = { auto: true, mood: true, phrase: true, drop: true, build: true, pulse: !reduceMotion, spark: !reduceMotion, acid: true, bar: true, morph: true, tune: true, own: true, flug: false, name: true, instr: true, journal: true };
   const toggles = Object.assign({}, TOG_DEFAULT, savedToggles || {});
+  // Build 38: Track-Flug raus (Emmo: hat alles kaputt gemacht). Einmalig auch bei gespeicherten Schaltern ausschalten.
+  if (!store.get('am-flug-off-38', false)) { toggles.flug = false; store.set('am-toggles', toggles); store.set('am-flug-off-38', true); }
 
   const beat = { t: performance.now(), n: 0, state: 'warten', lastKick: 0, kickStreak: 0, breakStart: 0, iois: [] };
   let levelAvg = 0, lastT = performance.now(), sectionChangeT = 0, sectionBeat0 = 0;
