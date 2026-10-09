@@ -499,12 +499,16 @@ async function kmBars(A, M, tick) {
     x.beweg = kmMap(x.cb, 0.25, 0.95);
     E.push((x.druck + x.hektik + x.schaerfe) / 3);
   }
+  // Build 53: Filterfahrt über mehrere Takte (die 303-Fahrt): wie sich die Helligkeit (Schwerpunkt, in Oktaven) in den nächsten 2 Takten gegenüber den 2 davor ändert.
+  // +1 = Filter öffnet sich schnell, -1 = er schließt sich. 0,2 Oktaven Unterschied gelten als volle Fahrt. ("Filter" = beweg misst dagegen nur das Schwanken innerhalb eines Takts.)
+  const lc = bars.map(x => Math.log2(Math.max(50, x.c))), mn = (i0, i1) => { let s = 0, n = 0; for (let j = Math.max(0, i0); j <= Math.min(lc.length - 1, i1); j++) { s += lc[j]; n++; } return n ? s / n : 0; };
+  bars.forEach((x, i) => { x.sweep = i < 2 || i > lc.length - 3 ? 0 : Math.max(-1, Math.min(1, (mn(i, i + 1) - mn(i - 2, i - 1)) / 0.2)); });
   bars.forEach((x, i) => {                                             // Spannung: dieser Takt gegen den Schnitt der 8 davor
     let s = 0, n = 0; for (let j = Math.max(0, i - 8); j < i; j++) { s += E[j]; n++; }
     x.spann = n ? Math.max(0, Math.min(1, 0.5 + 2.8 * (E[i] - s / n))) : 0.5;
   });
   const F32 = key => Float32Array.from(bars, x => x[key]);
-  const K = { t0, barS, n: nBars, dl, druck: F32('druck'), hektik: F32('hektik'), schaerfe: F32('schaerfe'), beweg: F32('beweg'), spann: F32('spann'), tk: F32('tk'), puls: F32('puls'), db: F32('db'),
+  const K = { t0, barS, n: nBars, dl, druck: F32('druck'), hektik: F32('hektik'), schaerfe: F32('schaerfe'), beweg: F32('beweg'), spann: F32('spann'), sweep: F32('sweep'), tk: F32('tk'), puls: F32('puls'), db: F32('db'),
     ton: Uint8Array.from(bars, x => x.ton), raster: Uint8Array.from(bars, x => x.raster) };
   // Mittel der vollen Takte (ohne die leisesten 35 %), Tonart und Puls-Raster des Tracks
   const thr = pct(K.db, 0.35), full = []; for (let j = 0; j < nBars; j++) if (K.db[j] >= thr) full.push(j);
