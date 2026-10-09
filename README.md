@@ -30,8 +30,14 @@ Eigene Tracks laden, Takt und Abschnitte werden vorab erkannt (Scan), Milkdrop
 - `shader-test.html` - Testseite fuer die eigenen Shader (Messlauf)
 - `acid-bild-*.jpg` - Bilder fuer die Bild-Presets
 
-Pruefen (laeuft auch bei jedem Push als GitHub-Aktion, `.github/workflows/pruefen.yml`):
-`for f in js/*.js *.js; do node --check $f; done; node test/files.test.js; node test/analyse.test.js`
+Pruefen (laeuft bei jedem Push als GitHub-Aktion, `.github/workflows/pruefen.yml`):
+
+- Schnell, nur Node: `for f in js/*.js *.js; do node --check $f; done; node test/files.test.js; node test/analyse.test.js`
+- Im Browser (Chromium ueber Playwright, ohne Internet): `node test/browser.js [Szenario,...]`. Braucht `npm i playwright && npx playwright install chromium`.
+  Butterchurn und Schriften werden durch Attrappen ersetzt, die Seite laeuft unter `/Acid/` wie auf GitHub Pages, Audiodateien kommen ueber das
+  Dateifeld (`test/gen-track.js` erzeugt einen kuenstlichen 140-BPM-Track). Geprueft werden Start, Bedienung, Shader, Zufallswechsel und Gesten, Scan,
+  Warteschlange, Grafik-Verlust, Mikrofon, Trackwechsel, Sicherung, Fehlermeldungen und Offline-Betrieb. Nicht geprueft werden Ton und Aussehen von Butterchurn
+  und alles, was nur auf einem echten iPhone passiert (Safari, Lautlos-Schalter, Wake-Lock).
 
 Werkstatt-Schalter stehen an einer Stelle: Tabelle `TOGGLES` in `js/01-grundlagen.js` (Name, Gruppe, Beschriftung, Standard, Hinweis). Die Knoepfe entstehen daraus.
 
