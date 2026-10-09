@@ -39,8 +39,10 @@ async function requestWake() {
 ['pointerdown', 'touchend', 'click'].forEach(ev => document.addEventListener(ev, () => { if (!wakeSentinel || wakeSentinel.released) requestWake(); if (wakeVideo && wakeVideo.paused) wakeVideo.play().then(() => wakeLog('an über Video-Ersatz (nach Tipp)'), () => {}); }, { capture: true, passive: true }));
 audio.addEventListener('playing', () => requestWake());
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') { requestWake(); if (wakeVideo && wakeVideo.paused) wakeVideo.play().catch(() => {}); unlock(); resize(); jrSplit('h'); }
-  else { saveProfiles(performance.now()); jrEnd('h'); jrSave(performance.now(), true); }
+  // Build 49: Nach dem Hintergrund beginnt die Bildraten-Messung neu. Sonst teilt der erste Tick die wenigen Bilder durch die ganze versteckte Zeit (Protokoll: "2 fps"),
+  // und die Lastbremse senkt die Auflösung eines Presets für 3 Tage, obwohl es nie langsam war.
+  if (document.visibilityState === 'visible') { fpsT = performance.now(); frameCount = 0; slowSecs = 0; requestWake(); if (wakeVideo && wakeVideo.paused) wakeVideo.play().catch(() => {}); unlock(); resize(); jrSplit('h'); }
+  else { slowSecs = 0; saveProfiles(performance.now()); jrEnd('h'); jrSave(performance.now(), true); }
 });
 window.addEventListener('pagehide', () => { saveProfiles(performance.now()); jrEnd('h'); jrSave(performance.now(), true); });
 

@@ -142,6 +142,9 @@ function onBeat(t, P) {
 const STILL_BARS = 16;
 function stillCheck(type, t, P) {
   if (!auto || frozen || !(P > 0)) return;
+  // Build 49: In Groove und Drop wechselt der Phrasen-Sync alle 16 Takte selbst. Das Sicherheitsnetz zählte ab dem Drop-Wechsel und feuerte 4 Takte vor der Phrase:
+  // im Protokoll folgte nach jedem Drop (5 von 5) ein zweiter Wechsel genau 7,1 s später. Das Netz gilt nur noch dort, wo kein Phrasen-Wechsel kommt.
+  if (toggles.phrase && (type === 'groove' || type === 'drop')) return;
   if (scanActive() ? audio.paused : !micOn && audio.paused) return;
   if (dropPre > 0.05) return;                                   // kurz vor dem Drop nicht dazwischenfunken, der Drop schneidet selbst
   if (t - lastSwitch < STILL_BARS * 4 * P - P / 2) return;

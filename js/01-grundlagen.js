@@ -49,11 +49,15 @@ const fbuf = new Float32Array(analyser.frequencyBinCount);
 const binHz = ctx.sampleRate / analyser.fftSize;
 
 // ===== Protokoll: Auslöser → Reaktion → Ergebnis =====
-const LOG = [], LOG_MAX = 300, t0 = performance.now();
+const LOG = [], LOG_MAX = 400, LOG_HEAD = 6, t0 = performance.now();   // die ersten LOG_HEAD Zeilen (Build, Start, Gerät) bleiben immer erhalten (Build 49)
 const stamp = () => { const t = (performance.now() - t0) / 1000; return String(Math.floor(t / 60)).padStart(2, '0') + ':' + (t % 60).toFixed(1).padStart(4, '0'); };
 function logEv(kind, text) {
   LOG.push({ t: stamp(), k: kind, x: String(text) });
-  if (LOG.length > LOG_MAX) LOG.shift();
+  if (LOG.length > LOG_MAX) {
+    const g = LOG[LOG_HEAD];
+    if (g && g.gap) { g.gap++; g.x = '… ' + g.gap + ' Zeilen ausgelassen'; LOG.splice(LOG_HEAD + 1, 1); }
+    else LOG.splice(LOG_HEAD, 2, { t: '--:--', k: 'e', x: '… 2 Zeilen ausgelassen', gap: 2 });
+  }
   renderLog();
 }
 const trg = t => logEv('a', t), rea = t => logEv('r', t), erg = t => logEv('e', t), err = t => logEv('x', t);
@@ -75,21 +79,21 @@ function snapshot() {
   try {
     const as = navigator.audioSession, a = audio;
     return 'Status: Audio-Engine ' + ctx.state + ' · Ausgabeverzögerung ' + Math.round((ctx.outputLatency || 0) * 1000) + ' ms'
-      + ' · iOS-Audio-Modus ' + (as ? as.type + '/' + as.state : 'nicht vorhanden')
+      + ' · iOS-Audio-Modus ' + (as ? as.type + '/' + (as.state || 'ohne state') : 'nicht vorhanden')
       + ' · Player ' + (a.paused ? 'pausiert' : 'spielt') + ' ' + a.currentTime.toFixed(1) + '/' + (isFinite(a.duration) ? a.duration.toFixed(0) : '?') + ' s'
       + ' · Lautstärke ' + a.volume + (a.muted ? ' STUMM' : '') + ' · bereit ' + a.readyState
       + ' · Pegel im Analysator ' + level() + ' · ' + agcText() + (bufState && bufState.buf ? ' · SICHERHEITS-MODUS' : '') + ' · Track ' + (curFile ? curFile.name : '–') + ' · Erkennung ' + (curAnalysis ? 'Scan' : 'live');
   } catch (e) { return 'Status nicht lesbar: ' + e.message; }
 }
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD = 'Build 48 · Scan-Warteschlange (nur gebrauchte Scans), sparsame Dekodierung für lange Tracks, Track-Flug entfernt, Schutz bei Grafik-Verlust der Shader';
-const BUILD_NO = 48;
+const BUILD = 'Build 49 · Fixes aus dem iPhone-Protokoll: Lastbremse nach Hintergrund, Play-Tipp, doppelter Bildwechsel nach dem Drop, Protokollkopf';
+const BUILD_NO = 49;
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);
 
 ctx.addEventListener('statechange', () => { rea('Audio-Engine wechselt auf ' + ctx.state); });
-try { if (navigator.audioSession) navigator.audioSession.addEventListener('statechange', () => rea('iOS-Audio-Modus: ' + navigator.audioSession.state)); } catch (e) {}
+try { if (navigator.audioSession) navigator.audioSession.addEventListener('statechange', () => rea('iOS-Audio-Modus: ' + (navigator.audioSession.state || 'ohne Angabe'))); } catch (e) {}
 window.addEventListener('error', e => err((e.message || 'Fehler') + (e.lineno ? ' (Zeile ' + e.lineno + ')' : '')));
 window.addEventListener('unhandledrejection', e => err('Abgelehnt: ' + (e.reason && e.reason.message || e.reason)));
 
@@ -176,7 +180,7 @@ $('logBtn').addEventListener('click', () => {
 $('logSnap').addEventListener('click', () => erg(snapshot()));
 $('logClear').addEventListener('click', () => { LOG.length = 0; renderLog(); });
 $('logCopy').addEventListener('click', () => {
-  const txt = 'Acid Milkdrop Protokoll\n' + logText();
+  const txt = 'Acid Milkdrop Protokoll · ' + BUILD + ' · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + '\n' + logText();
   const ok = () => { $('logCopy').textContent = 'Kopiert'; setTimeout(() => { $('logCopy').textContent = 'Kopieren'; }, 2000); };
   const sel = () => { const r = document.createRange(); r.selectNodeContents($('logpre')); const se = getSelection(); se.removeAllRanges(); se.addRange(r); say('Protokoll markiert. Tippe „Kopieren“ im Menü.'); };
   try { navigator.clipboard.writeText(txt).then(ok, sel); } catch (e) { sel(); }
