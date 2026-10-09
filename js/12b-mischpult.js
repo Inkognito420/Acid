@@ -27,6 +27,7 @@ const MX_SEC = {
   outro:   { zeta: 0.30, cap: 0.50, inc: 0.25, rot: 0.7, sway: 0.5, pump: 0.25 }
 };
 const MX_ZAMP = { drop: 0.05, groove: 0.035, buildup: 0.02, intro: 0.025, break: 0.025, outro: 0.025 };   // Zoom pro Kick (wie vorher der Kick-Puls)
+const MX_ZMAX = 0.08;                           // Zoom-Deckel (weich, tanh): kleine Werte bleiben fast unverändert
 const MX_ROT_MAX = 2.2, MX_SWAY_MAX = 1.4;     // Grad, Prozent der Bildbreite
 const MX_SPARK_COST = 0.004, MX_RING_COST = 0.04;
 
@@ -152,6 +153,7 @@ function mxFrame(t, dtMs) {
   let zO = MX.z.p, rO = mxSoft(MX.r.p, MX_ROT_MAX) * kickDuck * evDuck, xO = mxSoft(MX.x.p, MX_SWAY_MAX) * kickDuck * evDuck, yO = mxSoft(MX.y.p, MX_SWAY_MAX) * kickDuck * evDuck;
   const punch = toggles.pulse ? pulse * (0.2 + 0.25 * clamp((MX.c.zeta - 0.12) / 0.43)) : 0;   // harter Anschlag oben drauf, im Drop mehr
   zO = (zO > 0 ? zO : 0.5 * zO) * evDuck + punch;
+  if (zO > 0) zO = mxSoft(zO, MX_ZMAX);                                    // Build 51: weicher Deckel, im Drop kam der Zoom bis auf 12,5 %, jetzt höchstens ca. 8 %
   const bodyLoad = 0.5 * Math.abs(zO) / 0.05 + 0.35 * Math.abs(rO) / 2 + 0.25 * Math.hypot(xO, yO);
   MX.load += (bodyLoad - MX.load) * (1 - Math.exp(-dt / 0.15));
   const tot = MX.load + MX.evLoad, cap = MX.c.cap, want = tot > cap ? cap / tot : 1;

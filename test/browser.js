@@ -307,6 +307,25 @@ const SZ = {
     check('Letzter Lauf: Protokoll des vorigen Starts ist da, und der Knopf gibt es aus', r.vorhanden && r.zeigt, JSON.stringify(r));
     await close();
   },
+  async ruhiger() {
+    const { page, close } = await open();
+    await page.setInputFiles('#fileIn', [T[0]]);
+    await page.waitForFunction(() => scanActive(), null, { timeout: 120000, polling: 200 });
+    const r = await page.evaluate(() => {
+      const alt = curAnalysis.km;
+      const lauf = tonFolge => {
+        const n = tonFolge.length; curAnalysis.km = { n, ton: tonFolge, tk: tonFolge.map(() => 0.5) }; tonLast = -1; toggles.bar = true; dropPre = 0;
+        const v = barHueTarget; for (let k = 1; k < n; k++) { beat.n = k * 4; onBar('groove'); } return barHueTarget - v - 20 * (n - 1);
+      };
+      const pendeln = lauf([9, 4, 9, 4, 9, 4, 9, 4]), wechsel = lauf([9, 9, 9, 4, 4, 4, 4]);
+      curAnalysis.km = alt;
+      mxFrame(0, 0.016); MX.z.p = 0.3; MX.z.v = 0; mxFrame(16, 0.016); const z = MX.out.z;
+      return { pendeln, wechsel, z };
+    });
+    check('Takt-Farbe: Pendeln zwischen zwei Tönen gibt keinen Farbsprung, ein echter Wechsel (A→E, 3 Takte) genau einen', r.pendeln === 0 && r.wechsel === -150, JSON.stringify(r));
+    check('Drop-Zoom: auch bei übergroßem Anschlag bleibt der Zoom unter 8 % (vorher bis 12,5 %)', r.z > 0.05 && r.z <= 0.08, JSON.stringify(r));
+    await close();
+  },
   async manifest() {
     const m = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.webmanifest'), 'utf8'));
     const miss = m.icons.map(i => i.src).concat(['icon-180.png']).filter(f => !fs.existsSync(path.join(ROOT, f)));

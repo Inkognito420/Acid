@@ -91,8 +91,8 @@ function snapshot() {
   } catch (e) { return 'Status nicht lesbar: ' + e.message; }
 }
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD = 'Build 50 · Notaus (Knopf oder drei Finger), Hänger-Wächter, Protokoll des letzten Laufs';
-const BUILD_NO = 50;
+const BUILD = 'Build 51 · Takt-Farbe ruhiger (kein Pendeln bei A↔E), Drop-Zoom höchstens 8 %';
+const BUILD_NO = 51;
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);
@@ -258,7 +258,7 @@ const PHRASE_BEATS = 16 * 4;                     // Phrase = 16 Takte, wird ab A
 const MIN_REST_BEATS = 8 * 4;                    // kurz vor einem Abschnittsende kein Extra-Wechsel: der Wechsel kommt dann mit dem Abschnitt
 let kickGlow = 0, pulse = 0, flash = 0, build = 0, vign = 0, hue = 0, lastHue = 0;
 // Takt-Farbe: eigener Farbton-Anteil, springt auf der Takt-Eins weiter (hue = Acid-Anteil, barHue = Takt-Anteil)
-let barHue = 0, barHueTarget = 0, barSteps = 0;
+let barHue = 0, barHueTarget = 0, barSteps = 0, tonLast = -1;   // tonLast: zuletzt angewendeter Grundton (Build 51: Pendeln zwischen zwei Tönen löst keinen Farbsprung mehr aus)
 // Drop-Aufbau: dropPre 0..1 = wie nah der nächste Drop ist (mit Scan ab 8 Takten vorher), bang = Aufknallen im Drop
 let dropPre = 0, bang = 0, sat = 1, lastSat = 1, preLogT = -1;
 const PRE_BARS = 8;
@@ -272,9 +272,15 @@ function onBar(type) {
   // Bleibt der Ton gleich, ändert sich nichts gegenüber vorher. Schwelle 0,15: in lauten Takten liegt die Ton-Sicherheit bei 0,15-0,18 (Build 44 mit 0,20 sprang nie).
   const KB = curAnalysis && curAnalysis.km, kj = KB && scanActive() ? Math.floor(beat.n / 4) : -1;
   let tonJump = 0, tonTxt = '';
-  if (kj >= 1 && kj < KB.n && KB.tk[kj] >= 0.15 && KB.tk[kj - 1] >= 0.15 && KB.ton[kj] !== KB.ton[kj - 1]) {
-    const dn = ((KB.ton[kj] - KB.ton[kj - 1] + 18) % 12) - 6;     // -6 .. +5 Halbtöne
-    tonJump = dn * 30; tonTxt = ' · Ton ' + KM_NOTES[KB.ton[kj - 1]] + ' → ' + KM_NOTES[KB.ton[kj]] + ': ' + (tonJump > 0 ? '+' : '') + tonJump + '°';
+  if (kj >= 1 && kj < KB.n && KB.tk[kj] >= 0.15) {
+    if (tonLast < 0 || kj === 1) tonLast = KB.ton[kj - 1];
+    // Build 51: der neue Ton muss auch im nächsten Takt gelten (sonst pendelt A↔E mit ±150° im Takt); verglichen wird mit dem zuletzt angewendeten Ton
+    const hält = kj + 1 < KB.n && KB.tk[kj + 1] >= 0.15 && KB.ton[kj + 1] === KB.ton[kj];
+    if (KB.ton[kj] !== tonLast && hält) {
+      const dn = ((KB.ton[kj] - tonLast + 18) % 12) - 6;     // -6 .. +5 Halbtöne
+      tonJump = dn * 30; tonTxt = ' · Ton ' + KM_NOTES[tonLast] + ' → ' + KM_NOTES[KB.ton[kj]] + ': ' + (tonJump > 0 ? '+' : '') + tonJump + '°';
+      tonLast = KB.ton[kj];
+    }
   }
   barHueTarget += st + tonJump; barSteps++;
   if (tonJump) rea('Takt-Farbe: +' + st + '° auf der Eins (' + type + ')' + tonTxt + ', jetzt ' + Math.round(((barHueTarget % 360) + 360) % 360) + '°');

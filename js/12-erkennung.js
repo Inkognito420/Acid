@@ -27,6 +27,7 @@ const bM1 = band(300, 1000), bM2 = band(1000, 3000);
 
 let dropTimer = 0, reactiveErr = false;           // dropTimer: setzt nach einem Live-Drop den Zustand zurück; reactiveErr: Fehler der feinen Klang-Analyse nur einmal melden
 function resetBeat() {
+  tonLast = -1;
   clearTimeout(dropTimer);                        // ein Timer vom vorigen Track darf nicht in den neuen hineinfunken
   beat.state = 'warten'; beat.n = 0; beat.iois = []; beat.kickStreak = 0; beat.lastKick = 0;
   for (const k in det) Object.assign(det[k], { prev: 0, mean: 0, varr: 0, avg: 0 });
