@@ -83,8 +83,8 @@ function snapshot() {
 }
 const $$ = id => document.getElementById(id);
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD = 'Build 43 · Klangmesser im Scan: Hektik, Schärfe, Spannung, Filter, Ton pro Takt';
-const BUILD_NO = 43;
+const BUILD = 'Build 44 · Lastbremse wartet, solange der Scan rechnet';
+const BUILD_NO = 44;
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);
@@ -239,5 +239,6 @@ const snd = { kick: 0, hat: 0, acid: 0 };
 // Track-Liste und Scan-Zustand
 const queue = []; let qi = -1, curFile = null, curAnalysis = null, scanType = null, lastBi = null;
 const scanCache = new Map(); let scanChain = Promise.resolve();
+let scanBusyUntil = 0;                           // Build 44: solange ein Scan rechnet (und 3 s danach) zählt die Lastbremse keine langsamen Sekunden
 
 window.__AM_STEP = 1;

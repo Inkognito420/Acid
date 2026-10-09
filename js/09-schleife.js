@@ -51,7 +51,7 @@ function perSecond(fps, t) {
   syncFlugBtn();
   perfLog(fps, t);
   fpsHist.push([t, fps]); while (fpsHist.length && t - fpsHist[0][0] > 60000) fpsHist.shift();
-  if (!guard || t - lastSwitch < 3000 || t < brakeUntil) { slowSecs = 0; return; }
+  if (!guard || t - lastSwitch < 3000 || t < brakeUntil || t < scanBusyUntil) { slowSecs = 0; return; }
   if (fps < 52) slowSecs++; else slowSecs = 0;
   if (slowSecs >= 3 && curName) {
     slowSecs = 0;

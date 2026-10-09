@@ -102,7 +102,7 @@ async function analyzeFile(file) {
 }
 function ensureScan(file) {
   if (!scanCache.has(file)) {
-    const p = scanChain.then(() => analyzeFile(file)).catch(() => ({ skipped: 'fehler' }));
+    const p = scanChain.then(() => { scanBusyUntil = Infinity; return analyzeFile(file); }).catch(() => ({ skipped: 'fehler' })).then(r => { scanBusyUntil = performance.now() + 3000; return r; });
     scanChain = p.then(() => {});
     scanCache.set(file, p);
   }
