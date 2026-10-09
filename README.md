@@ -10,6 +10,8 @@ Eigene Tracks laden, Takt und Abschnitte werden vorab erkannt (Scan), Milkdrop
 
 - `index.html` - nur noch das Geruest: Leiste, Menue, Knoepfe und die Liste der Programmteile
 - `style.css` - Aussehen (Farben, Leiste, Menue)
+- `app-files.js` - Liste aller Programmteile in Ladereihenfolge (liest der Loader in index.html und `sw.js`)
+- `sw.js`, `manifest.webmanifest`, `icon-*.png` - Offline-Betrieb und Home-Bildschirm-App: nach dem ersten Laden startet die App auch ohne Netz (eigene Dateien und Butterchurn werden gespeichert; Schriften nicht)
 - `js/analyse.js` - Track-Analyse (Tempo, Takt, Abschnitte, Klangbild, Klangmesser), reine Rechenfunktionen
 - `js/01-grundlagen.js` bis `js/16-start.js` - das Programm in 16 Teilen, in dieser Reihenfolge geladen:
   01 Grundlagen (Start, Audio-Weg, Protokoll, Zustand) · 02 Instrumente hoeren ·
@@ -20,29 +22,45 @@ Eigene Tracks laden, Takt und Abschnitte werden vorab erkannt (Scan), Milkdrop
   14 Track-Scan · 15 Tracks und Mikro · 16 Start
   Alle Teile teilen sich einen gemeinsamen Bereich; jeder Teil prueft am Anfang, ob der
   vorige fertig ist (`window.__AM_STEP`), sonst startet er nicht.
-  Nach jeder Aenderung die Zahl `?b=` in index.html hochzaehlen (= Build), damit das
-  Handy keine alten Teile aus dem Zwischenspeicher nimmt.
+  Nach jeder Aenderung die Build-Nummer `var B=...` in index.html hochzaehlen (steht nur dort; der Loader haengt sie als `?b=` an alle Teile),
+  damit das Handy keine alten Teile aus dem Zwischenspeicher nimmt. Neue Teile in `app-files.js` eintragen (einzige Liste, Reihenfolge = Ladereihenfolge).
 - `acid-shader.js` - eigene Shader (WebGL) und der Player dafuer
 - `acid-profile.js`, `acid-presets.js` - vermessene Milkdrop-Presets, eigene Presets
 - `adaptive-preset-blender.js`, `audio-reactive-controller.js` - Presets mischen, Reaktion
+- `b33/` - Vergleichsseite: Stand von Build 33 unveraendert (nur Titel), zum Gegenhoeren unter `/Acid/b33/`. Hat eigene Kopien aller Dateien und gehoert nicht zum Programm.
 - `shader-test.html` - Testseite fuer die eigenen Shader (Messlauf)
 - `acid-bild-*.jpg` - Bilder fuer die Bild-Presets
 
-Syntax pruefen: `for f in js/*.js; do node --check $f; done`
+Pruefen (laeuft bei jedem Push als GitHub-Aktion, `.github/workflows/pruefen.yml`):
 
-## Track-Flug (ab Build 36, seit Build 38 aus)
+- Schnell, nur Node: `for f in js/*.js *.js; do node --check $f; done; node test/files.test.js; node test/analyse.test.js`
+- Im Browser (Chromium ueber Playwright, ohne Internet): `node test/browser.js [Szenario,...]`. Braucht `npm i playwright && npx playwright install chromium`.
+  Butterchurn und Schriften werden durch Attrappen ersetzt, die Seite laeuft unter `/Acid/` wie auf GitHub Pages, Audiodateien kommen ueber das
+  Dateifeld (`test/gen-track.js` erzeugt einen kuenstlichen 140-BPM-Track). Geprueft werden Start, Bedienung, Shader, Zufallswechsel und Gesten, Scan,
+  Warteschlange, Grafik-Verlust, Mikrofon, Trackwechsel, Sicherung, Fehlermeldungen und Offline-Betrieb. Nicht geprueft werden Ton und Aussehen von Butterchurn
+  und alles, was nur auf einem echten iPhone passiert (Safari, Lautlos-Schalter, Wake-Lock).
 
-Eigener Shader (`flug-track` in `acid-shader.js`): Der Scan eines Tracks wird als
-Tunnel gezeichnet, in dem man auf der Zeitachse nach vorne fliegt. Die naechsten
-Takte sind schon zu sehen: Kicks als Rahmen, Hi-Hats als Punkte an der Wand, Mitten
-als Boegen, Abschnittsgrenzen als Ringe, der Drop als Tor.
+Werkstatt-Schalter stehen an einer Stelle: Tabelle `TOGGLES` in `js/01-grundlagen.js` (Name, Gruppe, Beschriftung, Standard, Hinweis). Die Knoepfe entstehen daraus.
 
-- Automatisch: 12 Takte vor einem Drop bis 8 Takte danach (Schalter "Track-Flug bei
-  Drops" in der Werkstatt, Standard aus).
-- Knopf "Flug": seit Build 38 ausgeblendet (hielt die Automatik an). Nur noch ueber die Werkstatt einschaltbar.
-- Texturformat (Einheit 3): 4 Schritte pro Schlag, R Kick, G Hi-Hat, B Mitten,
-  A Abschnitt (siehe `AcidShaderPlayer.buildTrack`).
-- Debug: Seite mit `?debug` oeffnen, dann `window.__FLUG`.
+## Scan-Warteschlange (ab Build 48)
+
+`js/14-track-scan.js`. Es laeuft immer nur ein Scan, und gescannt wird nur, was gebraucht wird: der laufende Track
+zuerst, danach als Vorlauf der naechste der Liste. Wer schnell durch die Liste springt, stoesst keine unnoetigen Scans
+mehr an: wartende Auftraege fuer andere Tracks fallen weg, ein laufender Scan hoert am naechsten Teilstueck (60 s Ton)
+auf (`alive()` in `analyzeFile`). Ein verworfener Scan wird nicht gemerkt und startet bei Bedarf neu. Im Test (5 Tracks,
+schnell durchgeskippt) war der Scan des gehoerten Tracks nach 3 statt 9 Sekunden da.
+
+Dekodiert wird wie immer in der Rate der Audio-Engine, die Teilstuecke rechnen sie beim Rendern auf 22,05 kHz um. Das
+gehoert zu den Messwerten (die Umrechnung hat keinen Tiefpass: Hoehen ueber 11 kHz falten ins Band darunter). Nur bei
+sehr langen Tracks (geschaetzter Puffer ueber 200 MB, etwa 9 Minuten Stereo) oder unbekannter Laenge wird gleich in
+22,05 kHz dekodiert: das braucht weniger als die Haelfte des Speichers. Tempo, Abschnitte, Drops und Tonart bleiben
+dabei gleich, die Hoehen-Messwerte (Helligkeit, Filter) verschieben sich. Das Protokoll sagt es:
+„Scan: dekodiert mit … Hz … MB im Speicher (sparsam, lange Datei)“.
+
+## Track-Flug (Build 36 bis 47, entfernt in Build 48)
+
+Der Track-Flug (Tunnel durch den gescannten Track) war seit Build 38 aus und ist entfernt. Wer ihn zurueckhaben will:
+`git checkout e3a8885` (letzter Stand mit Track-Flug, Build 46), Shader `flug-track` in `acid-shader.js`, Teil 3 und die Verweise in 08, 10, 12, 15.
 
 ## Klangmesser (ab Build 43)
 

@@ -81,10 +81,9 @@ function snapshot() {
       + ' · Pegel im Analysator ' + level() + ' · ' + agcText() + (bufState && bufState.buf ? ' · SICHERHEITS-MODUS' : '') + ' · Track ' + (curFile ? curFile.name : '–') + ' · Erkennung ' + (curAnalysis ? 'Scan' : 'live');
   } catch (e) { return 'Status nicht lesbar: ' + e.message; }
 }
-const $$ = id => document.getElementById(id);
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD = 'Build 46 · Mischpult „Körper & Funken“: Federn im Takt, Funken-Konto, Sidechain, Ausholen vor dem Drop';
-const BUILD_NO = 46;
+const BUILD = 'Build 48 · Scan-Warteschlange (nur gebrauchte Scans), sparsame Dekodierung für lange Tracks, Track-Flug entfernt, Schutz bei Grafik-Verlust der Shader';
+const BUILD_NO = 48;
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);
@@ -133,7 +132,7 @@ function makeWav(sec, freq, amp) {
   for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.round(Math.sin(2 * Math.PI * freq * i / rate) * amp * 32767), true);
   return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
 }
-$$('beepA').addEventListener('click', async () => {
+$('beepA').addEventListener('click', async () => {
   trg('Testton 1 (über die Audio-Engine, so wie der Track)');
   try {
     await ctx.resume();
@@ -142,7 +141,7 @@ $$('beepA').addEventListener('click', async () => {
     rea('Ton gesendet, Engine ' + ctx.state); erg('Hörst du den Ton? Ja/Nein merken');
   } catch (e) { err('Testton 1: ' + e.message); }
 });
-$$('beepB').addEventListener('click', async () => {
+$('beepB').addEventListener('click', async () => {
   trg('Testton 2 (über den normalen Player, ohne Audio-Engine)');
   try { const a = new Audio(makeWav(0.6, 660, 0.4)); await a.play(); rea('Player-Ton gestartet'); erg('Hörst du den Ton? Ja/Nein merken'); }
   catch (e) { err('Testton 2: ' + e.message); }
@@ -170,16 +169,16 @@ audio.addEventListener('playing', () => { wantPlay = true; resumeTries = 0; star
 audio.addEventListener('pause', () => { setTimeout(() => resumeIfCut('Pause ohne Tipp'), 200); });
 
 // Bedienung des Protokoll-Fensters
-$$('logBtn').addEventListener('click', () => {
-  const open = $$('logbox').hidden; $$('logbox').hidden = !open; $$('logBtn').setAttribute('aria-expanded', String(open)); $$('logBtn').classList.toggle('hot', open);
+$('logBtn').addEventListener('click', () => {
+  const open = $('logbox').hidden; $('logbox').hidden = !open; $('logBtn').setAttribute('aria-expanded', String(open)); $('logBtn').classList.toggle('hot', open);
   if (open) { erg(snapshot()); }
 });
-$$('logSnap').addEventListener('click', () => erg(snapshot()));
-$$('logClear').addEventListener('click', () => { LOG.length = 0; renderLog(); });
-$$('logCopy').addEventListener('click', () => {
+$('logSnap').addEventListener('click', () => erg(snapshot()));
+$('logClear').addEventListener('click', () => { LOG.length = 0; renderLog(); });
+$('logCopy').addEventListener('click', () => {
   const txt = 'Acid Milkdrop Protokoll\n' + logText();
-  const ok = () => { $$('logCopy').textContent = 'Kopiert'; setTimeout(() => { $$('logCopy').textContent = 'Kopieren'; }, 2000); };
-  const sel = () => { const r = document.createRange(); r.selectNodeContents($$('logpre')); const se = getSelection(); se.removeAllRanges(); se.addRange(r); say('Protokoll markiert. Tippe „Kopieren“ im Menü.'); };
+  const ok = () => { $('logCopy').textContent = 'Kopiert'; setTimeout(() => { $('logCopy').textContent = 'Kopieren'; }, 2000); };
+  const sel = () => { const r = document.createRange(); r.selectNodeContents($('logpre')); const se = getSelection(); se.removeAllRanges(); se.addRange(r); say('Protokoll markiert. Tippe „Kopieren“ im Menü.'); };
   try { navigator.clipboard.writeText(txt).then(ok, sel); } catch (e) { sel(); }
 });
 
@@ -197,10 +196,35 @@ let bpm = 140;
 const savedToggles = store.get('am-toggles', null);
 const reduceMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 // Build 37: so ist alles gedacht (Automatik). Werkstatt-Schalter weichen davon ab, „Alles auf Auto“ setzt zurück.
-const TOG_DEFAULT = { auto: true, mood: true, phrase: true, drop: true, build: true, pulse: !reduceMotion, spark: !reduceMotion, acid: true, bar: true, morph: true, tune: true, own: true, flug: false, name: true, instr: true, journal: true, mix: true };
+// Alle Schalter an EINER Stelle: [Name, Gruppe in der Werkstatt, Beschriftung (auch für die Automatik-Karte), Standard, Hinweistext].
+// Die Knöpfe t-<Name> entstehen daraus (index.html hat nur die leeren Gruppen).
+const TOGGLES = [
+  ["mood", "Bildwechsel", "Stimmungs-Presets", true, "Presets passend zu Klang, Abschnitt und Stimmung"],
+  ["phrase", "Bildwechsel", "Phrasen-Sync", true, "Wechsel auf Phrasen und Abschnitten im Takt"],
+  ["drop", "Bildwechsel", "Drop-Cut", true, "Harter Schnitt mit Blitz im Drop"],
+  ["own", "Bildwechsel", "Eigene Shader", true, "Ab und zu kommt einer der eigenen Shader (Peak Time, Driving, Acid) statt eines Milkdrop-Presets, passend zum Abschnitt"],
+  ["build", "Effekte", "Build-up", true, "Spannung vor dem Drop: Zoom, Vignette, Funken"],
+  ["pulse", "Effekte", "Kick-Puls", !reduceMotion, "Bild pumpt mit dem Kick"],
+  ["spark", "Effekte", "Hats & Snares", !reduceMotion, "Funken und Ringe auf Hi-Hats und Snares"],
+  ["morph", "Effekte", "Übergangs-Verformung", true, "Beim Bildwechsel verformt sich das Bild kurz mit dem Klang. Mit Mischpult: Drehen mit der 303, Schwanken im Takt, Stoß beim Bildwechsel"],
+  ["mix", "Effekte", "Mischpult", true, "Körper & Funken: Das Bild hängt an Federn, die auf das Tempo gestimmt sind. Funken kosten Energie aus einem Konto, vor dem Drop wird gespart. Aus = Effekte wie vor Build 46 (zum Vergleichen)"],
+  ["acid", "Farbe", "Acid-Farbe", true, "Farbe folgt der 303-Filterfahrt"],
+  ["bar", "Farbe", "Takt-Farbe", true, "Farbton springt auf jeder Takt-Eins ein Stück weiter: im Groove leicht, im Drop kräftig, im Break steht er"],
+  ["auto", "Hören", "Auto-Pegel", true, "Gleicht leise und laute Tracks für den Visualizer an (der Ton bleibt unverändert)"],
+  ["instr", "Hören", "Instrumente hören", true, "Die Presets bekommen Kick, Mitten (303, Synths, Claps) und Hi-Hats einzeln statt verschwommener Frequenzbereiche."],
+  ["tune", "Hören", "Reaktions-Angleich", true, "Schwach reagierende Presets werden verstärkt, zu starke gedämpft (gilt ab dem nächsten Bildwechsel)"],
+  ["name", "Anzeige", "Name oben rechts", true, "Name des laufenden Presets oben rechts, wenn die Leiste weg ist (für Screenshots)"],
+  ["journal", "Anzeige", "Mitschreiben", true, "Schreibt unsichtbar mit, welches Visual zu welcher Musik lief und was du damit gemacht hast (Wischen, Stern, Halten). Bleibt nur im Browser, nichts wird gesendet."]
+];
+const TOG_DEFAULT = {}, TOG_LABEL = {}, togIds = {};
+for (const [k, grp, label, def, tip] of TOGGLES) {
+  TOG_DEFAULT[k] = def; TOG_LABEL[k] = label; togIds[k] = "t-" + k;
+  const box = [...document.querySelectorAll("#werk .grp")].find(g => g.querySelector(".gl").textContent === grp);
+  const b = document.createElement("button"); b.id = "t-" + k; b.type = "button"; b.title = tip; b.textContent = label;
+  box.appendChild(b);
+}
 const toggles = Object.assign({}, TOG_DEFAULT, savedToggles || {});
-// Build 38: Track-Flug raus (Emmo: hat alles kaputt gemacht). Einmalig auch bei gespeicherten Schaltern ausschalten.
-if (!store.get('am-flug-off-38', false)) { toggles.flug = false; store.set('am-toggles', toggles); store.set('am-flug-off-38', true); }
+delete toggles.flug;                              // Build 48: der Track-Flug ist entfernt, ein alter gespeicherter Schalterstand dazu fällt weg
 
 const beat = { t: performance.now(), n: 0, state: 'warten', lastKick: 0, kickStreak: 0, breakStart: 0, iois: [] };
 let levelAvg = 0, lastT = performance.now(), sectionChangeT = 0, sectionBeat0 = 0;
@@ -238,7 +262,7 @@ const snd = { kick: 0, hat: 0, acid: 0 };
 
 // Track-Liste und Scan-Zustand
 const queue = []; let qi = -1, curFile = null, curAnalysis = null, scanType = null, lastBi = null;
-const scanCache = new Map(); let scanChain = Promise.resolve();
+const scanCache = new Map();                     // Datei -> Ergebnis des Scans (Warteschlange und Abbruch: js/14-track-scan.js)
 let scanBusyUntil = 0;                           // Build 44: solange ein Scan rechnet (und 3 s danach) zählt die Lastbremse keine langsamen Sekunden
 
 window.__AM_STEP = 1;

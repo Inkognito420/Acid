@@ -41,7 +41,6 @@ function loadByName(n, blend, pushHist = true, why = 'a') {
   rea('Preset: ' + n);
   if (!viz) return false;
   brakeApply(n);                                     // Lastbremse: schwere Favoriten in kleinerer Auflösung, alles andere voll
-  if (isFlug() && n !== FLUG_NAME) { flugEnded(flug.why || ({ n: 'Wischen', p: 'Wischen zurück', d: 'Doppeltipp', g: 'Wächter/Fehler', x: 'Einstellung', k: 'Track weg', s: 'Abschnitt', f: 'Phrase', t: 'Zeitgeber' })[why] || why); flug.why = ''; }
   if (SH[n]) { if (!shShow(n, blend)) return false; }
   else {
     try { viz.loadPreset(tuned(n), blend); }
@@ -208,7 +207,6 @@ function blendSecs(type) {
   return +(bars * 4 * beatS).toFixed(3);
 }
 function nextPreset(blend = 2.7, tg, exact, why) {
-  if (isFlug() && !flug.release && (!why || why === 'f' || why === 's' || why === 't' || why === 'a')) return;   // Track-Flug läuft: automatische Wechsel warten
   if (blend > 0 && !exact && blender && toggles.mood) {              // Übergangsdauer nach Klang: laut/hart = kurz, ruhig = lang
     const a = blender.suggestDuration() / 1000;
     blend = Math.min(a, Math.max(blend, 1.2));
@@ -223,13 +221,11 @@ function nextPreset(blend = 2.7, tg, exact, why) {
     if (n && loadByName(n, blend, true, why)) { if (lastFitInfo) rea('Passung' + lastFitInfo); return; }
   }
 }
-function flugHandOff() { if (flug.mode) { flug.mode = false; syncFlugBtn(); } }
 function goNext() {
-  flugHandOff();
   if (histPos < hist.length - 1) { histPos++; loadByName(hist[histPos], 1.5, false, 'n'); }
   else nextPreset(1.5, undefined, false, 'n');
 }
-function goPrev() { flugHandOff(); if (histPos > 0) { histPos--; loadByName(hist[histPos], 1.5, false, 'p'); } }
+function goPrev() { if (histPos > 0) { histPos--; loadByName(hist[histPos], 1.5, false, 'p'); } }
 $('next').addEventListener('click', goNext);
 $('prev').addEventListener('click', goPrev);
 $('auto').addEventListener('click', () => { auto = !auto; $('auto').classList.toggle('hot', auto); lastSwitch = performance.now(); });
@@ -272,9 +268,9 @@ function saveProfiles(t) {
 function createViz() {
   try { viz = BC.createVisualizer(ctx, canvas, { width: W, height: H, pixelRatio: 1, textureRatio: 1 }); }
   catch (e) { viz = null; say('WebGL startet nicht. Schließ andere Tabs und lade die Seite neu.'); return false; }
-  try { viz.connectAudio(delayNode); } catch (e) {}
+  try { viz.connectAudio(delayNode); } catch (e) { err('Milkdrop-Audio-Anschluss fehlgeschlagen: ' + (e && e.message || e)); }
   hookInstr();
-  try { if (window.ACID_IMAGES) viz.loadExtraImages(window.ACID_IMAGES); } catch (e) {}   // Bilder für die Bild-Presets (acid-presets.js)
+  try { if (window.ACID_IMAGES) viz.loadExtraImages(window.ACID_IMAGES); } catch (e) { err('Bilder für die Bild-Presets konnten nicht geladen werden: ' + (e && e.message || e)); }   // Bilder für die Bild-Presets (acid-presets.js)
   applyColor();
   nextPreset(0, undefined, false, 'i');
   return true;

@@ -25,7 +25,9 @@ const det = {
 };
 const bM1 = band(300, 1000), bM2 = band(1000, 3000);
 
+let dropTimer = 0, reactiveErr = false;           // dropTimer: setzt nach einem Live-Drop den Zustand zurück; reactiveErr: Fehler der feinen Klang-Analyse nur einmal melden
 function resetBeat() {
+  clearTimeout(dropTimer);                        // ein Timer vom vorigen Track darf nicht in den neuen hineinfunken
   beat.state = 'warten'; beat.n = 0; beat.iois = []; beat.kickStreak = 0; beat.lastKick = 0;
   for (const k in det) Object.assign(det[k], { prev: 0, mean: 0, varr: 0, avg: 0 });
   build = 0;
@@ -48,7 +50,7 @@ function beatFrame(t) {
     const hS = onsetStep(det.hat, t, dt); if (hS) { onHat(hS); if (!scanActive()) { AMI.ht = Math.max(AMI.ht, 0.35 + 0.65 * hS); AMI.n.t++; amiEv('h'); } }
     const mS = onsetStep(det.mid, t, dt); if (mS && t - det.kick.last > 50 && !scanActive()) { AMI.hm = Math.max(AMI.hm, 0.4 + 0.6 * mS); AMI.n.m++; amiEv('m'); }
     hiFast = ema(hiFast, det.hat.e + det.snare.e, dt, 800);
-    if (reactive) { try { feedBlender(reactive.update(), dt); } catch (e) {} }
+    if (reactive) { try { feedBlender(reactive.update(), dt); } catch (e) { if (!reactiveErr) { reactiveErr = true; err('Feine Klang-Analyse (24 Bänder) fehlgeschlagen: ' + (e && e.message || e)); } } }
     { const dec = Math.exp(-dt / 4000), perBeat = bpm / 60 * 4;   // ca. 4 Sekunden Gedächtnis
       snd.kick = snd.kick * dec + kS; snd.hat = snd.hat * dec + hS;
       snd.acid = ema(snd.acid, clamp((acidAct - 0.01) / 0.04), dt, 1500);
@@ -119,7 +121,7 @@ function onKick(t, strength) {
   if (beat.state === 'warten' && beat.kickStreak >= 4) { beat.t = t; beat.n = 0; setLiveState('groove', t, P); return; }
   if ((beat.state === 'break' || beat.state === 'buildup') && t - beat.breakStart > 16 * P) {
     beat.t = t; beat.n = 0; setLiveState('drop', t, P);
-    setTimeout(() => { if (beat.state === 'drop') beat.state = 'groove'; }, 16 * P);
+    clearTimeout(dropTimer); dropTimer = setTimeout(() => { if (beat.state === 'drop') beat.state = 'groove'; }, 16 * P);
     return;
   }
   if (beat.state === 'break' || beat.state === 'buildup') beat.state = 'groove';
@@ -160,7 +162,7 @@ function onSection(type, prev, P, t) {
       if (auto) nextPreset(0, moodTarget('drop'), false, 's');
       if (window.__AMX && toggles.mix) mxDrop();                 // Build 46: Mischpult gibt das angesparte Funken-Konto auf einmal aus
       else {
-        flash = reduceMotion ? 0.2 : (isFlug() ? 0.35 : 0.7);    // im Track-Flug blitzt schon die Wand selbst
+        flash = reduceMotion ? 0.2 : 0.7;
         burst(40);
       }
     }
@@ -204,7 +206,6 @@ function scanFrame(t) {
     if (preLogT !== nd) { preLogT = nd; rea('Drop-Aufbau: Drop in ' + Math.round((nd - ts) / (4 * A.beatS)) + ' Takten (bei ' + nd.toFixed(1) + ' s)'); }
   } else dropPre = 0;
   build = Math.max(build, dropPre);
-  flugAuto(A, ts, t);
   if (bi !== lastBi) {
     const prevBi = lastBi; lastBi = bi;
     // Kick-Puls auf dem Raster: kommt pünktlich auf dem Schlag, nicht erst nach der Erkennung
