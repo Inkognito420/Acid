@@ -83,8 +83,8 @@ function snapshot() {
 }
 const $$ = id => document.getElementById(id);
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD = 'Build 45 · Farbsprung beim Tonwechsel springt jetzt auch in lauten Takten an';
-const BUILD_NO = 45;
+const BUILD = 'Build 46 · Mischpult „Körper & Funken“: Federn im Takt, Funken-Konto, Sidechain, Ausholen vor dem Drop';
+const BUILD_NO = 46;
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);
@@ -197,7 +197,7 @@ let bpm = 140;
 const savedToggles = store.get('am-toggles', null);
 const reduceMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 // Build 37: so ist alles gedacht (Automatik). Werkstatt-Schalter weichen davon ab, „Alles auf Auto“ setzt zurück.
-const TOG_DEFAULT = { auto: true, mood: true, phrase: true, drop: true, build: true, pulse: !reduceMotion, spark: !reduceMotion, acid: true, bar: true, morph: true, tune: true, own: true, flug: false, name: true, instr: true, journal: true };
+const TOG_DEFAULT = { auto: true, mood: true, phrase: true, drop: true, build: true, pulse: !reduceMotion, spark: !reduceMotion, acid: true, bar: true, morph: true, tune: true, own: true, flug: false, name: true, instr: true, journal: true, mix: true };
 const toggles = Object.assign({}, TOG_DEFAULT, savedToggles || {});
 // Build 38: Track-Flug raus (Emmo: hat alles kaputt gemacht). Einmalig auch bei gespeicherten Schaltern ausschalten.
 if (!store.get('am-flug-off-38', false)) { toggles.flug = false; store.set('am-toggles', toggles); store.set('am-flug-off-38', true); }

@@ -12,11 +12,13 @@ const flashEl = $('flash'), dots = document.querySelectorAll('.beats i');
 function onHat(s) {
   if (!toggles.spark || sparks.length > 140) return;
   const kn = kmNow(), hk = kn ? 0.6 + 0.8 * kn.hektik : 1;                 // Build 43: viele schnelle Hats im Takt = mehr Funken, ruhiger Takt = weniger
-  const n = 2 + Math.floor(s * 4 * hk * (1 + 3 * (toggles.build ? build : 0)));
+  let n = 2 + Math.floor(s * 4 * hk * (1 + 3 * (toggles.build ? build : 0)));
+  if (window.__AMX && toggles.mix) n = mxSparks(n);                       // Build 46: Funken kosten Energie aus dem Konto
   for (let i = 0; i < n; i++) sparks.push({ x: Math.random() * fxc.width, y: Math.random() * fxc.height, r: (1 + 2.2 * Math.random()) * fxScale, life: 0, max: 160 + Math.random() * 140, acid: Math.random() < 0.5 });
 }
 function onSnare(s) {
   if (!toggles.spark || rings.length > 6) return;
+  if (window.__AMX && toggles.mix && !mxRing()) return;
   rings.push({ life: 0, max: 340, a: 0.2 + 0.3 * s });
 }
 function burst(n) {
@@ -32,20 +34,13 @@ function fxFrame(t) {
   kickGlow *= Math.exp(-dt / 120);
   const b = toggles.build ? build : 0;
   bang *= Math.exp(-dt / 900);
-  let sc = (toggles.pulse ? 1 + pulse : 1) + 0.07 * b * b;
   const pr = toggles.build ? dropPre : 0;
   sat = (1 - 0.7 * pr * pr) * (1 + 0.45 * bang);   // vor dem Drop Farbe raus, im Drop kurz übersatt
-  let tx = '';
-  if (morphOn && blender) {
-    const d = blender.update(null, t).deformed;
-    if (!blender.state.active) morphOn = false;
-    const rot = Math.max(-4, Math.min(4, d.rotation * 0.5));                               // höchstens 4°
-    const zoom = Math.min(0.14, (d.scale - 1) * 0.9) + Math.abs(rot) * Math.PI / 180 * 2.2;   // etwas größer, damit beim Drehen keine Ecken sichtbar werden
-    const dx = Math.max(-3, Math.min(3, d.x * 6)), dy = Math.max(-3, Math.min(3, d.y * 6));
-    sc *= 1 + zoom;
-    if (morphOn) tx = 'translate(' + dx.toFixed(2) + '%,' + dy.toFixed(2) + '%) rotate(' + rot.toFixed(2) + 'deg) ';
-  }
-  const tr = (tx || sc !== 1) ? tx + 'scale(' + sc.toFixed(4) + ')' : '';
+  let tr;
+  if (window.__AMX && toggles.mix && !reduceMotion) {   // Build 46: Mischpult „Körper & Funken“ rechnet die ganze Bewegung (Teil 12b)
+    if (morphOn) { morphOn = false; mxTransition(blender ? blender.state.blendDuration / 1000 : 2); }
+    tr = mxFrame(t, dt);
+  } else tr = oldBody(t, b);
   if (tr !== lastTr) { canvas.style.transform = tr; shEl.style.transform = tr; lastTr = tr; }
   shBar *= Math.exp(-dt / 250);
   flashEl.style.opacity = flash > 0.01 ? flash.toFixed(3) : '0';
@@ -57,6 +52,21 @@ function fxFrame(t) {
   for (let i = 0; i < 4; i++) { dots[i].classList.toggle('on', i === cur); dots[i].classList.toggle('kick', i === cur && kickGlow > 0.3); }
   if (t - lastHead > 250) { lastHead = t; moveHead(); }
   drawFx(dt, b);
+}
+// Bewegung wie vor Build 46 (Schalter „Mischpult“ aus): Kick-Puls und Build-up als Zoom, beim Bildwechsel die Verformung des Blenders
+function oldBody(t, b) {
+  let sc = (toggles.pulse ? 1 + pulse : 1) + 0.07 * b * b;
+  let tx = '';
+  if (morphOn && blender) {
+    const d = blender.update(null, t).deformed;
+    if (!blender.state.active) morphOn = false;
+    const rot = Math.max(-4, Math.min(4, d.rotation * 0.5));                               // höchstens 4°
+    const zoom = Math.min(0.14, (d.scale - 1) * 0.9) + Math.abs(rot) * Math.PI / 180 * 2.2;   // etwas größer, damit beim Drehen keine Ecken sichtbar werden
+    const dx = Math.max(-3, Math.min(3, d.x * 6)), dy = Math.max(-3, Math.min(3, d.y * 6));
+    sc *= 1 + zoom;
+    if (morphOn) tx = 'translate(' + dx.toFixed(2) + '%,' + dy.toFixed(2) + '%) rotate(' + rot.toFixed(2) + 'deg) ';
+  }
+  return (tx || sc !== 1) ? tx + 'scale(' + sc.toFixed(4) + ')' : '';
 }
 function drawFx(dt, b) {
   vign = ema(vign, b * 0.8, dt, 120);

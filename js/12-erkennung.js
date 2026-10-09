@@ -158,8 +158,11 @@ function onSection(type, prev, P, t) {
     if (toggles.build && !reduceMotion) { bang = 1; if (toggles.bar) barHueTarget += 60; }   // Aufknallen: Farbe satt zurück + Farbsprung
     if (toggles.drop) {
       if (auto) nextPreset(0, moodTarget('drop'), false, 's');
-      flash = reduceMotion ? 0.2 : (isFlug() ? 0.35 : 0.7);    // im Track-Flug blitzt schon die Wand selbst
-      burst(40);
+      if (window.__AMX && toggles.mix) mxDrop();                 // Build 46: Mischpult gibt das angesparte Funken-Konto auf einmal aus
+      else {
+        flash = reduceMotion ? 0.2 : (isFlug() ? 0.35 : 0.7);    // im Track-Flug blitzt schon die Wand selbst
+        burst(40);
+      }
     }
     pulse = Math.max(pulse, 0.06);
     return;

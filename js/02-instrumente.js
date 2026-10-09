@@ -22,6 +22,7 @@ function instrFrame(t) {
   AMI.act = ema(AMI.act, hearing ? 1 : 0, dt, 350);
   if (AMI.act > 0.9) AMI.ams = (AMI.ams || 0) + dt;
   if (AMI.hk > 0) { AMI.n.k++; amiEv('k'); }
+  AMI.kHit = AMI.hk; AMI.mHit = AMI.hm; AMI.tHit = AMI.ht;   // Build 46: Treffer dieses Bildes fürs Mischpult (Teil 12b)
   AMI.kE = Math.max(AMI.kE * Math.exp(-dt / 110), AMI.hk); AMI.hk = 0;
   AMI.kS = Math.max(AMI.kS * Math.exp(-dt / 260), AMI.kE);
   AMI.mE = Math.max(AMI.mE * Math.exp(-dt / 110), AMI.hm); AMI.hm = 0;

@@ -16,7 +16,7 @@ Eigene Tracks laden, Takt und Abschnitte werden vorab erkannt (Scan), Milkdrop
   03 Eigene Shader · 04 Bildschirm (Groesse, Farbe) · 05 Presets vermessen ·
   06 Mitschrift · 07 Sichern/Laden · 08 Auswahl (Lastbremse, Preset-Auswahl, Wechsel) ·
   09 Schleife (60 fps, Waechter) · 10 Bedienung (Schalter, Automatik-Karte, Auto-Pegel) ·
-  11 Ton-Sicherheit · 12 Erkennung (live und Scan) · 13 Effekte und Gesten ·
+  11 Ton-Sicherheit · 12 Erkennung (live und Scan) · 12b Mischpult (Koerper & Funken) · 13 Effekte und Gesten ·
   14 Track-Scan · 15 Tracks und Mikro · 16 Start
   Alle Teile teilen sich einen gemeinsamen Bereich; jeder Teil prueft am Anfang, ob der
   vorige fertig ist (`window.__AM_STEP`), sonst startet er nicht.
@@ -64,3 +64,27 @@ Rechenwege und Skalen stammen aus dem eigenständigen Klangmesser, laufen hier a
 - Fehler im Klangmesser stoppen den Scan nicht: `A.kmErr`, Protokollzeile „Klangmesser fehlgeschlagen“.
 - Protokoll nach dem Scan: „Klangmesser (… ms): Druck … · Hektik … · Grundton …“. Die Stimmungszeile zeigt zusätzlich Puls und Grundton.
 - Test ohne Browser: Rechenfunktionen laufen in Node (`vm.runInThisContext` auf `js/analyse.js`), z. B. mit einem künstlichen Track.
+
+## Mischpult „Koerper & Funken“ (ab Build 46)
+
+`js/12b-mischpult.js`. Zwei Arten von Reaktion, an einer Stelle gemischt:
+
+- **Koerper** (alles, was sich bewegt): Zoom, Drehen, Schwanken als Federn. Die Zoom-Feder ist auf das
+  Tempo gestimmt (eine Schwingung pro Schlag): rein auf dem Kick, zurueck zum Offbeat. Mit Scan kommt der
+  Stoss so frueh, dass die Spitze genau auf dem Kick liegt. Drehen folgt der 303-Filterfahrt (eine
+  Schwingung pro Takt), Schwanken geht auf der Takt-Eins links/rechts (eine pro zwei Takte).
+- **Funken** (alles, was auftaucht): Funken und Ringe kosten Energie aus einem Konto. Pro Schlag kommt
+  Energie dazu (Drop viel, Break wenig). Vor dem Drop wird angespart (in 8 Takten fast voll), im Drop
+  geht alles auf einmal raus (Funken und Blitz je nach Kontostand).
+- **Sidechain / Unruhe-Budget**: Der Kick drueckt Drehen und Schwanken kurz weg, grosse Funken druecken
+  den Koerper weg, ein stark schwingender Koerper bekommt weniger Funken. Deckel pro Abschnitt.
+- **Ausholen**: Vor dem Drop wird die Dreh-Feder aufgezogen und das Bild zoomt langsam rein, einen Schlag
+  vorher zieht es zurueck, im Drop schnappt die Feder los und schwingt 2 Takte frei aus.
+
+Ersetzt (Schalter „Mischpult“ an, Standard): den alten Zoom aus Kick-Puls und Build-up, die
+Uebergangs-Verformung des Blenders, Funken-Menge, Ringe, Drop-Blitz und Drop-Funken. Farbe, Vignette und
+Bildwahl bleiben. Schalter in der Werkstatt: Kick-Puls (Zoom), Uebergangs-Verformung (Drehen, Schwanken,
+Stoss beim Bildwechsel), Hats & Snares (Funken), Build-up (Ansparen, Ausholen). Mischpult aus = Verhalten
+wie Build 45. Bricht `12b` ab, laeuft alles wie vorher (`window.__AMX` fehlt).
+Protokoll: „Mischpult · Drop: Konto …“, „Mischpult · Feder geloest …“ und einmal pro Minute eine Zeile
+mit Kick-Stoessen, Zoom, Drehen, Schwanken, Funken, Konto und wie oft gedeckelt wurde. Debug: `?debug`, `window.__MX`.

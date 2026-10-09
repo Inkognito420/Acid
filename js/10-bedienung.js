@@ -4,7 +4,7 @@
 if (window.__AM_STEP !== 9) throw new Error('Acid Milkdrop: Teil 10 (bedienung) nicht gestartet, ein früherer Teil ist abgebrochen');
 
 // ===== Schalter im Sound-Menü =====
-const togIds = { auto: 't-auto', mood: 't-mood', phrase: 't-phrase', drop: 't-drop', build: 't-build', pulse: 't-pulse', spark: 't-spark', acid: 't-acid', bar: 't-bar', morph: 't-morph', tune: 't-tune', own: 't-own', flug: 't-flug', name: 't-name', instr: 't-instr', journal: 't-journal' };
+const togIds = { auto: 't-auto', mood: 't-mood', phrase: 't-phrase', drop: 't-drop', build: 't-build', pulse: 't-pulse', spark: 't-spark', acid: 't-acid', bar: 't-bar', morph: 't-morph', tune: 't-tune', own: 't-own', flug: 't-flug', name: 't-name', instr: 't-instr', journal: 't-journal', mix: 't-mix' };
 for (const k in togIds) {
   const el = $(togIds[k]);
   el.classList.toggle('hot', toggles[k]);
@@ -13,6 +13,7 @@ for (const k in togIds) {
     if (k === 'phrase') lastSwitch = performance.now();
     if (k === 'name') showName();
     if (k === 'journal') { rea('Mitschreiben: ' + (toggles.journal ? 'an' : 'aus (bisherige Mitschrift bleibt, es kommt nichts dazu)')); jrSplit('x'); jrInfo(); }
+    if (k === 'mix') rea('Mischpult (Körper & Funken): ' + (toggles.mix ? 'an' : 'aus (Effekte wie vor Build 46)'));
     if (k === 'instr') rea('Instrumente hören: ' + (toggles.instr ? 'an (Kick, Mitten, Höhen einzeln)' : 'aus (Milkdrop hört wie vorher Bass, Mitte, Höhen)'));
     if (k === 'own' && !toggles.own && shCur && !(isFlug() && flug.mode)) nextPreset(1.5, undefined, false, 'x');
     if (k === 'flug') rea('Track-Flug bei Drops: ' + (toggles.flug ? 'an (ab 12 Takten vor einem Drop)' : 'aus (nur mit dem Knopf „Flug“)'));
@@ -35,7 +36,7 @@ $('werkBtn').addEventListener('click', () => {
   $('werkBtn').setAttribute('aria-expanded', String(open)); $('werkBtn').classList.toggle('hot', open);
 });
 // ===== Automatik-Karte (Build 37): zeigt, ob alles automatisch läuft oder etwas von Hand verstellt ist =====
-const TOG_LABEL = { auto: 'Auto-Pegel', mood: 'Stimmungs-Presets', phrase: 'Phrasen-Sync', drop: 'Drop-Cut', build: 'Build-up', pulse: 'Kick-Puls', spark: 'Hats & Snares', acid: 'Acid-Farbe', bar: 'Takt-Farbe', morph: 'Übergangs-Verformung', tune: 'Reaktions-Angleich', own: 'Eigene Shader', flug: 'Track-Flug bei Drops', name: 'Name oben rechts', instr: 'Instrumente hören', journal: 'Mitschreiben' };
+const TOG_LABEL = { auto: 'Auto-Pegel', mood: 'Stimmungs-Presets', phrase: 'Phrasen-Sync', drop: 'Drop-Cut', build: 'Build-up', pulse: 'Kick-Puls', spark: 'Hats & Snares', acid: 'Acid-Farbe', bar: 'Takt-Farbe', morph: 'Übergangs-Verformung', tune: 'Reaktions-Angleich', own: 'Eigene Shader', flug: 'Track-Flug bei Drops', name: 'Name oben rechts', instr: 'Instrumente hören', journal: 'Mitschreiben', mix: 'Mischpult' };
 function handSet() {
   const out = [];
   for (const k in TOG_DEFAULT) if (toggles[k] !== TOG_DEFAULT[k]) out.push(TOG_LABEL[k] + (toggles[k] ? ' an' : ' aus'));
