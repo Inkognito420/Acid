@@ -268,9 +268,9 @@ function saveProfiles(t) {
 function createViz() {
   try { viz = BC.createVisualizer(ctx, canvas, { width: W, height: H, pixelRatio: 1, textureRatio: 1 }); }
   catch (e) { viz = null; say('WebGL startet nicht. Schließ andere Tabs und lade die Seite neu.'); return false; }
-  try { viz.connectAudio(delayNode); } catch (e) {}
+  try { viz.connectAudio(delayNode); } catch (e) { err('Milkdrop-Audio-Anschluss fehlgeschlagen: ' + (e && e.message || e)); }
   hookInstr();
-  try { if (window.ACID_IMAGES) viz.loadExtraImages(window.ACID_IMAGES); } catch (e) {}   // Bilder für die Bild-Presets (acid-presets.js)
+  try { if (window.ACID_IMAGES) viz.loadExtraImages(window.ACID_IMAGES); } catch (e) { err('Bilder für die Bild-Presets konnten nicht geladen werden: ' + (e && e.message || e)); }   // Bilder für die Bild-Presets (acid-presets.js)
   applyColor();
   nextPreset(0, undefined, false, 'i');
   return true;

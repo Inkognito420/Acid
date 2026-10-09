@@ -14,6 +14,7 @@ const AMI = { t0: 0, kE: 0, kS: 0, mE: 0, mS: 0, tE: 0, tS: 0, hk: 0, hm: 0, ht:
   n: { k: 0, m: 0, t: 0 }, so: [0, 0, 0], mo: [0, 0, 0], sn: [0, 0, 0], mn: [0, 0, 0], c: 0, lo: [0, 0, 0] };
 const INSTR = { bV: [0.38, 2.00], bA: [0.56, 0.70], mV: [0.32, 1.70], mA: [0.55, 0.65], tV: [0.42, 2.10], tA: [0.60, 0.80] };   // [Grundwert zwischen den Schlägen, Zuschlag auf dem Schlag]
 if (/[?&]debug\b/.test(location.search)) { window.__AMI = AMI; AMI.ev = { k: [], m: [], h: [], s: [] }; }   // nur zum Testen: Zeitpunkte der Treffer
+let amiErr = false;                                           // Fehler beim Überschreiben der Pegel nur einmal melden (läuft in jedem Bild)
 const amiEv = k => { if (AMI.ev) AMI.ev[k].push(+audio.currentTime.toFixed(3)); };
 // Läuft jedes Bild nach der Erkennung: Hüllkurven der Kanäle. Neue Treffer (kickGlow, hm, ht) kommen voll an, danach klingen sie ab.
 function instrFrame(t) {
@@ -89,7 +90,7 @@ function hookInstr() {
     const al = viz && viz.renderer && viz.renderer.audioLevels;
     if (!al || typeof al.updateAudioLevels !== 'function' || !al.val || !al.att) { err('Instrumente hören: Einhängepunkt in Butterchurn nicht gefunden, Presets hören wie vorher'); return; }
     const orig = al.updateAudioLevels;
-    al.updateAudioLevels = function (fps, frame) { orig.call(this, fps, frame); try { applyInstr(this); } catch (e) {} };
+    al.updateAudioLevels = function (fps, frame) { orig.call(this, fps, frame); try { applyInstr(this); } catch (e) { if (!amiErr) { amiErr = true; err('Instrumente hören: ' + (e && e.message || e)); } } };
     AMI.hooked = true; if (window.__AMI) AMI.al = al;
     rea('Instrumente hören: eingehängt (Kick, Mitten, Höhen einzeln)');
   } catch (e) { err('Instrumente hören: ' + e.message); }

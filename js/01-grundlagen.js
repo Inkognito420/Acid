@@ -82,7 +82,7 @@ function snapshot() {
   } catch (e) { return 'Status nicht lesbar: ' + e.message; }
 }
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD = 'Build 48 · Scan-Warteschlange (nur gebrauchte Scans), sparsame Dekodierung für lange Tracks, Track-Flug entfernt';
+const BUILD = 'Build 48 · Scan-Warteschlange (nur gebrauchte Scans), sparsame Dekodierung für lange Tracks, Track-Flug entfernt, Schutz bei Grafik-Verlust der Shader';
 const BUILD_NO = 48;
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));

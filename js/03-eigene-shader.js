@@ -10,6 +10,22 @@ try { (window.ACID_SHADERS || []).forEach(d => { SH['Eigen · ' + d.name] = d; }
 let shPlayer = null, shCur = null, shOp = 0, shFrom = 0, shTo = 0, shT0 = 0, shDur = 0;
 let shTime = 0, shLastT = 0, shBar = 0, shHue0 = 0, lastShStyle = '';
 const shLv = { b: 0, m: 0, h: 0, pb: 1e-4, pm: 1e-4, ph: 1e-4 };
+// Grafik-Verlust (Build 48): Holt sich das System den WebGL-Speicher zurück (iOS z. B. im Hintergrund), meldet die Fläche "webglcontextlost".
+// Ohne preventDefault kommt sie nie wieder: die Shader blieben bis zum Neuladen schwarz, und jeder neue Versuch sperrte einen weiteren als "kaputt".
+// So: Shader aus dem Spiel nehmen, Milkdrop übernehmen lassen, nach der Wiederherstellung einen neuen Spieler anlegen und alles wieder freigeben.
+let shGone = false, shWarmI = 0, shWarmAt = 0, shWarmMs = 0, shWarmMax = 0;
+shEl.addEventListener('webglcontextlost', e => {
+  e.preventDefault(); shGone = true;
+  err('Grafik der eigenen Shader vom System pausiert (WebGL verloren)');
+  const wasShown = !!shCur;
+  shCur = null; shOp = 0; shDur = 0; shEl.style.opacity = '0';
+  if (wasShown && curName && SH[curName]) nextPreset(0.5, undefined, false, 'g');
+});
+shEl.addEventListener('webglcontextrestored', () => {
+  shPlayer = null; shWarmI = 0; shWarmAt = 0; shGone = false;     // neuer Spieler auf dem wiederhergestellten Kontext, Shader werden wieder vorab übersetzt
+  for (const n in SH) broken.delete(n);
+  rea('Eigene Shader: Grafik wiederhergestellt');
+});
 function shSize() {
   if (!W || !H) return;
   const T = targetSize(true);                                                         // ohne Lastbremse: die gilt nur für Milkdrop-Presets, eigene Shader laufen immer voll (halb)
@@ -17,6 +33,7 @@ function shSize() {
   if (shEl.width !== w || shEl.height !== h) { shEl.width = w; shEl.height = h; }
 }
 function shEnsure() {
+  if (shGone) return false;
   if (shPlayer) return true;
   if (!window.AcidShaderPlayer) return false;
   try { shSize(); shPlayer = new window.AcidShaderPlayer(shEl); rea('Eigene Shader: Grafik gestartet (' + shEl.width + '×' + shEl.height + ')'); return true; }
@@ -54,7 +71,6 @@ function shLevels(dt, b, m, h) {
   shLv.b = ema(shLv.b, clamp(b / shLv.pb), dt, 40); shLv.m = ema(shLv.m, clamp(m / shLv.pm), dt, 60); shLv.h = ema(shLv.h, clamp(h / shLv.ph), dt, 40);
 }
 // Vorbereiten: kurz nach dem Start jeden Shader einzeln übersetzen (unsichtbar), damit der erste echte Wechsel nicht ruckelt
-let shWarmI = 0, shWarmAt = 0, shWarmMs = 0, shWarmMax = 0;
 function shWarmStep(t) {
   const list = window.ACID_SHADERS || [];
   if (!toggles.own || frozen || shWarmI >= list.length || shCur || shOp >= 0.002) return;
