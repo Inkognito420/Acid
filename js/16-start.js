@@ -31,7 +31,7 @@ async function requestWake() {
   try {
     wakeSentinel = await navigator.wakeLock.request('screen');
     wakeLog('an (Wake-Lock)');
-    wakeSentinel.addEventListener('release', () => { wakeLog('Sperre freigegeben, hole sie neu'); wakeSentinel = null; setTimeout(requestWake, 300); });
+    wakeSentinel.addEventListener('release', () => { if (!panicked) wakeLog('Sperre freigegeben, hole sie neu'); wakeSentinel = null; setTimeout(requestWake, 300); });
   } catch (e) {
     wakeTries++; wakeLog('Wake-Lock abgelehnt (' + (e && e.name) + ')'); wakeFallback('Wake-Lock abgelehnt');
   }

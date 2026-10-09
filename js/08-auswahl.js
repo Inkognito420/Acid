@@ -7,8 +7,9 @@ if (window.__AM_STEP !== 7) throw new Error('Acid Milkdrop: Teil 8 (auswahl) nic
 // Ein Favorit (oder eigenes Acid-Preset), der bei voller Auflösung unter 52 fps fällt, wird nicht mehr gesperrt, sondern läuft eine Stufe kleiner
 // (80, 65, 50 %). Butterchurn rechnet beim Ändern der Größe das aktuelle Bild um, es flackert nichts. Die Stufe wird je Preset 3 Tage gemerkt
 // (das Handy kann warm gewesen sein, danach wird neu geprüft). Reicht auch 50 % nicht, sperrt der Wächter wie bisher.
-const BRAKE_KEY = 'am-brake-v1', BRAKE_TTL = 3 * 86400;
+const BRAKE_KEY = 'am-brake-v2', BRAKE_TTL = 3 * 86400;
 const brake = {};
+try { localStorage.removeItem('am-brake-v1'); } catch (e) {}      // Build 54: die Stufen aus der 2K-Zeit waren bei 1080p zu streng, v2 fängt frisch an
 { const b = store.get(BRAKE_KEY, {}), now = Date.now() / 1000;
   if (b && typeof b === 'object') for (const k in b) { const e = b[k]; if (e && e.s >= 1 && e.s < BRAKE_STEPS.length && e.t > now - BRAKE_TTL) brake[k] = { s: e.s | 0, t: e.t | 0 }; } }
 let brakeUntil = 0, liveTicks = 0;                     // liveTicks: nur für den Test (zählt Schläge im Live-Raster)

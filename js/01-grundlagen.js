@@ -91,8 +91,8 @@ function snapshot() {
   } catch (e) { return 'Status nicht lesbar: ' + e.message; }
 }
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD = 'Build 53 · Filterfahrt: öffnender Filter = Farben blühen auf und drehen schneller';
-const BUILD_NO = 53;
+const BUILD = 'Build 54 · Takt-Farbe wartet 4 Takte auf neuen Ton, Lastbremse fängt bei 1080p frisch an';
+const BUILD_NO = 54;
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);
@@ -259,6 +259,7 @@ const MIN_REST_BEATS = 8 * 4;                    // kurz vor einem Abschnittsend
 let swLive = 0;                                   // Build 53: geglättete Filterfahrt (-1..+1) des aktuellen Takts
 let kickGlow = 0, pulse = 0, flash = 0, build = 0, vign = 0, hue = 0, lastHue = 0;
 // Takt-Farbe: eigener Farbton-Anteil, springt auf der Takt-Eins weiter (hue = Acid-Anteil, barHue = Takt-Anteil)
+const TON_HALT = 3;                              // Build 54: so viele Takte nach dem ersten muss ein neuer Ton bleiben (Build 51: 1, bei Protokoll 03:05/03:08 sprang A→E→A nach zwei Takten)
 const TON_MIN = 0.10;                            // Build 52: Ton-Sicherheit ab 10 % (vorher 15 %): in dichten Techno-Takten liegt sie bei 0,15-0,18, ein Track mit 17 % löste in 7 Minuten keinen einzigen Farbsprung aus
 let barHue = 0, barHueTarget = 0, barSteps = 0, tonLast = -1;   // tonLast: zuletzt angewendeter Grundton (Build 51: Pendeln zwischen zwei Tönen löst keinen Farbsprung mehr aus)
 // Drop-Aufbau: dropPre 0..1 = wie nah der nächste Drop ist (mit Scan ab 8 Takten vorher), bang = Aufknallen im Drop
@@ -277,8 +278,8 @@ function onBar(type) {
   let tonJump = 0, tonTxt = '';
   if (kj >= 1 && kj < KB.n && KB.tk[kj] >= TON_MIN) {
     if (tonLast < 0 || kj === 1) tonLast = KB.ton[kj - 1];
-    // Build 51: der neue Ton muss auch im nächsten Takt gelten (sonst pendelt A↔E mit ±150° im Takt); verglichen wird mit dem zuletzt angewendeten Ton
-    const hält = kj + 1 < KB.n && KB.tk[kj + 1] >= TON_MIN && KB.ton[kj + 1] === KB.ton[kj];
+    // Build 51/54: der neue Ton muss auch in den nächsten 3 Takten gelten (zusammen 4 Takte) (sonst pendelt A↔E mit ±150° im Takt); verglichen wird mit dem zuletzt angewendeten Ton
+    let hält = kj + TON_HALT < KB.n; for (let q = 1; q <= TON_HALT && hält; q++) hält = KB.tk[kj + q] >= TON_MIN && KB.ton[kj + q] === KB.ton[kj];
     if (KB.ton[kj] !== tonLast && hält) {
       const dn = ((KB.ton[kj] - tonLast + 18) % 12) - 6;     // -6 .. +5 Halbtöne
       tonJump = dn * 30; tonTxt = ' · Ton ' + KM_NOTES[tonLast] + ' → ' + KM_NOTES[KB.ton[kj]] + ': ' + (tonJump > 0 ? '+' : '') + tonJump + '°';
