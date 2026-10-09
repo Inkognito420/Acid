@@ -12,9 +12,10 @@ let pw; try { pw = require('playwright'); } catch (e) { try { pw = require(proce
 
 const ROOT = path.join(__dirname, '..'), PREFIX = '/Acid/', PORT = 8790 + Math.floor(Math.random() * 100);
 const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.png': 'image/png', '.jpg': 'image/jpeg', '.webmanifest': 'application/manifest+json' };
+const misses = [];                     // Pfade, die der Server nicht kannte (für die Fehlersuche)
 const server = http.createServer((req, res) => {
   const u = decodeURIComponent(req.url.split('?')[0]);
-  if (!u.startsWith(PREFIX)) { res.writeHead(404); return res.end(); }
+  if (!u.startsWith(PREFIX)) { misses.push(u); res.writeHead(404); return res.end(); }
   const f = path.join(ROOT, u.slice(PREFIX.length) || 'index.html');
   if (!f.startsWith(ROOT) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404); return res.end(); }
   res.writeHead(200, { 'content-type': MIME[path.extname(f)] || 'application/octet-stream', 'cache-control': 'no-store' }); fs.createReadStream(f).pipe(res);
@@ -209,6 +210,17 @@ const SZ = {
     await ctx.setOffline(true); await page.reload({ waitUntil: 'load' }); await page.waitForTimeout(1500);
     const off = await page.evaluate(() => ({ step: window.__AM_STEP, sw: !!navigator.serviceWorker.controller }));
     check('Offline: Neuladen ohne Netz startet die App bis Teil 16', off.step === 16 && off.sw && errs.length === 0, JSON.stringify(off) + errs.join(' | '));
+    await close();
+  },
+  async vergleichsseite() {
+    // b33/ liegt im Bereich des Service Workers: sie muss mit aktivem Service Worker weiter ihren eigenen Stand zeigen
+    const { page, errs, close } = await open({ sw: true });
+    await page.evaluate(() => navigator.serviceWorker.ready); await page.waitForTimeout(800);
+    const fehlend = []; page.on('response', x => { if (x.status() >= 400) fehlend.push(x.status() + ' ' + x.url().replace(/^http:\/\/127\.0\.0\.1:\d+/, '')); });
+    await page.goto(URL0.replace('index.html', 'b33/index.html'), { waitUntil: 'load' }); await page.waitForTimeout(1500);
+    const r = await page.evaluate(() => ({ titel: document.title, build: typeof BUILD !== 'undefined' ? BUILD : null, start: !!document.getElementById('stage') }));
+    check('b33: Vergleichsseite zeigt Build 33 und startet ohne Fehler (auch mit Service Worker)', /Build 33/.test(r.titel) && r.start && errs.filter(e => !(/Failed to load resource/.test(e) && misses.every(m => m === '/favicon.ico'))).length === 0,   // das fehlende Favicon der alten, unveränderten Seite ist egal
+       JSON.stringify(r) + errs.join(' | ') + ' 404: ' + misses.join(','));
     await close();
   },
   async manifest() {
