@@ -11,7 +11,8 @@ const flashEl = $('flash'), dots = document.querySelectorAll('.beats i');
 
 function onHat(s) {
   if (!toggles.spark || sparks.length > 140) return;
-  const n = 2 + Math.floor(s * 4 * (1 + 3 * (toggles.build ? build : 0)));
+  const kn = kmNow(), hk = kn ? 0.6 + 0.8 * kn.hektik : 1;                 // Build 43: viele schnelle Hats im Takt = mehr Funken, ruhiger Takt = weniger
+  const n = 2 + Math.floor(s * 4 * hk * (1 + 3 * (toggles.build ? build : 0)));
   for (let i = 0; i < n; i++) sparks.push({ x: Math.random() * fxc.width, y: Math.random() * fxc.height, r: (1 + 2.2 * Math.random()) * fxScale, life: 0, max: 160 + Math.random() * 140, acid: Math.random() < 0.5 });
 }
 function onSnare(s) {

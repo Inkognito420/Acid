@@ -338,3 +338,193 @@ function klangSummary(A) {
   }
   return Object.keys(acc).map(k => { const a = acc[k], p = x => Math.round(100 * x / a[3]); return (NAME[k] || k) + ' Kick ' + p(a[0]) + ' / Töne ' + p(a[1]) + ' / Hats ' + p(a[2]) + ' %'; }).join(' · ');
 }
+
+// ===== Klangmesser (Build 43) =====
+// Messwerte pro Takt: Druck, Hektik, Schärfe, Spannung, Filter und Ton (Grundton). Rechenwege und Skalen stammen aus dem
+// eigenständigen Klangmesser (gleiche FFT, gleiche Formeln), laufen aber hier auf dem Raster dieses Scans: Tempo auf 0,01 BPM,
+// echte Takt-Eins und Abschnitte. Der Klangmesser hatte ein eigenes grobes Raster (120-160 BPM, Takt-Anfang beliebig).
+// Außerdem im selben Durchlauf wie der Scan: keine zweite Dekodierung und kein zweiter Offline-Lauf.
+const KM_PULS_LO = 0.12, KM_PULS_HI = 0.42;
+const kmMap = (x, a, b) => Math.max(0, Math.min(1, (x - a) / (b - a)));
+function kmFFT(n) {
+  const rev = new Uint32Array(n), bits = Math.log2(n) | 0, cs = new Float64Array(n / 2), sn = new Float64Array(n / 2), win = new Float32Array(n);
+  for (let i = 0; i < n; i++) { let r = 0, x = i; for (let b = 0; b < bits; b++) { r = (r << 1) | (x & 1); x >>= 1; } rev[i] = r; win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / n); }
+  for (let i = 0; i < n / 2; i++) { cs[i] = Math.cos(-2 * Math.PI * i / n); sn[i] = Math.sin(-2 * Math.PI * i / n); }
+  const re = new Float64Array(n), im = new Float64Array(n);
+  return {
+    n, win, re, im, run() {
+      for (let i = 0; i < n; i++) { const j = rev[i]; if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; } }
+      for (let len = 2; len <= n; len <<= 1) {
+        const h = len >> 1, step = n / len;
+        for (let i = 0; i < n; i += len) for (let k = 0; k < h; k++) {
+          const w = k * step, cr = cs[w], ci = sn[w], a = i + k, b = a + h, tr = re[b] * cr - im[b] * ci, ti = re[b] * ci + im[b] * cr;
+          re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+        }
+      }
+    }
+  };
+}
+// hopA: Schrittweite des Scans in Proben (512 bei 22050 Hz). Feine Bilder: halbe Schrittweite, Fenster 1024 (wie im Klangmesser: 256 / 1024).
+// Töne: Fenster 4096, Schritt 2048. totalA: Zahl der Scan-Schritte.
+function kmSetup(SR, hopA, totalA) {
+  const hopF = hopA >> 1, N = hopA * 2, Nc = N * 4, hopC = Nc >> 1, half = N >> 1, binHz = SR / N, bin = f => Math.round(f / binHz);
+  const nF = totalA * 2 + 4, nC = Math.ceil(totalA * hopA / hopC) + 2, f2 = kmFFT(Nc), pcOf = new Int8Array(Nc / 2 + 1), binHzC = SR / Nc;
+  // Töne ab 100 Hz: darunter überdeckt der Kick (oft um 55-60 Hz) die Tonart
+  for (let k = 0; k <= Nc / 2; k++) { const hz = k * binHzC; pcOf[k] = (hz < 100 || hz > 2000) ? -1 : ((Math.round(12 * Math.log2(hz / 440)) + 69) % 12 + 12) % 12; }
+  return {
+    SR, hopA, hopF, N, Nc, hopC, half, binHz, nF, nC, f1: kmFFT(N), f2, pcOf, mg: new Float32Array(Nc / 2 + 1),
+    bB0: bin(30), bB1: bin(150), bM0: bin(300), bM1: bin(3000), bH0: bin(5000), bH1: Math.min(half, bin(11000)), pM0: bin(600), pM1: bin(3000), pH0: bin(3000),
+    lg: new Float32Array(half + 1), prev: new Float32Array(half + 1), first: true,
+    fluxM: new Float32Array(nF), fluxH: new Float32Array(nF), cent: new Float32Array(nF), flat: new Float32Array(nF),
+    eAll: new Float32Array(nF), eBass: new Float32Array(nF), envM: new Float32Array(nF), envH: new Float32Array(nF),
+    chroma: new Float32Array(nC * 12)
+  };
+}
+// Ein feines Bild ab Probe pos (fehlende Proben = 0), Ergebnis an Stelle fi
+function kmFrame(M, d, pos, fi) {
+  const F = M.f1, N = F.n, half = M.half, re = F.re, im = F.im, win = F.win, L = d.length, binHz = M.binHz;
+  let ss = 0;
+  for (let i = 0; i < N; i++) { const p = pos + i, v = p >= 0 && p < L ? d[p] : 0; ss += v * v; re[i] = v * win[i]; im[i] = 0; }
+  F.run();
+  const lg = M.lg, prev = M.prev, bB0 = M.bB0, bB1 = M.bB1, pM0 = M.pM0, pM1 = M.pM1, pH0 = M.pH0, bH1 = M.bH1;
+  let sm = 0, sf = 0, lp = 0, sp = 0, eb = 0, em = 0, eh = 0;
+  for (let k = 0; k <= half; k++) {
+    const p = re[k] * re[k] + im[k] * im[k], m = Math.sqrt(p);
+    lg[k] = Math.log(1 + m * 20);
+    sm += m; sf += m * k * binHz;
+    const pp = p > 1e-10 ? p : 1e-10; lp += Math.log(pp); sp += pp;
+    if (k >= bB0 && k < bB1) eb += p;
+    if (k >= pM0 && k < pM1) em += p; else if (k >= pH0 && k < bH1) eh += p;
+  }
+  let dM = 0, dH = 0, x, k;
+  for (k = M.bM0; k < M.bM1; k++) { x = lg[k] - prev[k]; if (x > 0) dM += x; }
+  for (k = M.bH0; k < bH1; k++) { x = lg[k] - prev[k]; if (x > 0) dH += x; }
+  if (M.first) { dM = dH = 0; M.first = false; }
+  M.prev = lg; M.lg = prev;
+  M.fluxM[fi] = dM; M.fluxH[fi] = dH;
+  M.cent[fi] = sm > 1e-9 ? sf / sm : 0; M.flat[fi] = Math.exp(lp / (half + 1)) / (sp / (half + 1));
+  M.eAll[fi] = ss / N; M.eBass[fi] = eb; M.envM[fi] = Math.sqrt(em); M.envH[fi] = Math.sqrt(eh);
+}
+// Ein Ton-Bild (12 Tonhöhen-Klassen), nur Spitzen im Spektrum zählen
+function kmChroma(M, d, pos, gi) {
+  const F = M.f2, N = F.n, L = d.length, re = F.re, im = F.im, win = F.win, mg = M.mg, pcOf = M.pcOf, o = gi * 12;
+  if (gi < 0 || gi >= M.nC) return;
+  for (let i = 0; i < N; i++) { const p = pos + i; re[i] = (p >= 0 && p < L ? d[p] : 0) * win[i]; im[i] = 0; }
+  F.run();
+  for (let k = 0; k <= N / 2; k++) mg[k] = Math.sqrt(re[k] * re[k] + im[k] * im[k]);
+  for (let k = 1; k < N / 2; k++) { const pc = pcOf[k]; if (pc >= 0 && mg[k] >= mg[k - 1] && mg[k] >= mg[k + 1]) M.chroma[o + pc] += mg[k]; }
+}
+// Werte pro Takt auf dem Raster von A. Ergebnis: Felder je Takt (0..1, Spannung 0,5 = neutral), dazu Mittelwerte und 10-/90-%-Werte des Tracks
+async function kmBars(A, M, tick) {
+  if (!A || !A.grid) return null;
+  const SR = M.SR, fps = SR / M.hopF, spb = A.beatS, six = spb / 4, barS = 4 * spb, t0 = A.beat0 + A.barPhase * spb, nF = M.nF - 4, nC = M.nC - 2;
+  const nBars = Math.max(0, Math.floor((A.duration - t0) / barS + 1e-6));
+  if (nBars < 4) return null;
+  const clampI = (x, a, b) => Math.max(a, Math.min(b, x));
+  const fx = t => (t * SR - M.N / 2) / M.hopF;                       // Zeit -> Nummer des feinen Bildes (Bildmitte)
+  const pct = (arr, q) => { const s = Array.from(arr).sort((a, b) => a - b); return s[Math.floor(s.length * q)] || 0; };
+  // Lage des Kick-Klicks in den Mitten (wie im Klangmesser über einen Schlag gefaltet). Der Beginn im Raster kommt aus dem Bass und liegt etwas später.
+  const NBn = 64, prof = new Float64Array(NBn), pcn = new Float64Array(NBn);
+  for (let f = 0; f < nF; f++) { const t = (f * M.hopF + M.N / 2) / SR, ib = Math.floor((((t - A.beat0) % spb + spb) % spb) / spb * NBn) % NBn; prof[ib] += M.fluxM[f]; pcn[ib]++; }
+  let bestI = 0, bestS = -1;
+  for (let i = 0; i < NBn; i++) { let s = 0; for (let k = -1; k <= 1; k++) { const j = (i + k + NBn) % NBn; s += prof[j] / Math.max(1, pcn[j]); } if (s > bestS) { bestS = s; bestI = i; } }
+  let dl = (bestI + 0.5) / NBn * spb; if (dl > spb / 2) dl -= spb;
+  const tc = t0 + dl;                                                  // Klick-Zeit des ersten Schlags im ersten Takt
+  // 16tel-Raster: stärkster Einsatz pro Feld
+  const n16 = nBars * 16;
+  const slotMax = env => {
+    const v = new Float32Array(n16);
+    for (let s = 0; s < n16; s++) {
+      const c = tc + s * six, a = clampI(Math.floor(fx(c - six * 0.25)), 0, nF), b = clampI(Math.ceil(fx(c + six * 0.35)), 0, nF); let mx = 0;
+      for (let q = a; q < b; q++) if (env[q] > mx) mx = env[q];
+      v[s] = mx;
+    }
+    return v;
+  };
+  const SM = slotMax(M.fluxM), SH = slotMax(M.fluxH), rM = pct(SM, 0.95) || 1, rH = pct(SH, 0.95) || 1;
+  for (let i = 0; i < n16; i++) { SM[i] = Math.min(1.5, SM[i] / rM); SH[i] = Math.min(1.5, SH[i] / rH); }
+  // Puls: wie stark die Lautstärke in Mitten und Höhen im 8tel-, 16tel- oder 32tel-Takt schwingt (Fenster: 4 Takte um den Takt herum)
+  const pulse = (env, b) => {
+    const c = t0 + (b + 0.5) * barS, a = clampI(Math.floor(fx(c - 2 * barS)), 0, nF), e = clampI(Math.floor(fx(c + 2 * barS)), 0, nF), n = e - a;
+    if (n < 32) return [0, 0, 0];
+    let mean = 0; for (let q = a; q < e; q++) mean += env[q]; mean /= n;
+    const xw = new Float64Array(n); let tot = 0;
+    for (let q = 0; q < n; q++) { const w = 0.5 - 0.5 * Math.cos(2 * Math.PI * q / (n - 1)); xw[q] = (env[a + q] - mean) * w; tot += xw[q] * xw[q]; }
+    if (tot <= 0) return [0, 0, 0];
+    const L = n / fps, res = [];
+    for (const sub of [2, 4, 8]) {
+      const fz = A.bpm / 60 * sub; let acc = 0;
+      for (const dfz of [-1 / L, 0, 1 / L]) {
+        const ww = 2 * Math.PI * (fz + dfz) / fps; let cr = 0, ci = 0;
+        for (let z = 0; z < n; z++) { cr += xw[z] * Math.cos(ww * z); ci -= xw[z] * Math.sin(ww * z); }
+        acc += cr * cr + ci * ci;
+      }
+      res.push(acc / (n * tot));
+    }
+    return res;
+  };
+  const bars = [];
+  for (let b = 0; b < nBars; b++) {
+    const a16 = b * 16, tb = t0 + b * barS, fa = clampI(Math.round(fx(tb)), 0, nF), fe = clampI(Math.round(fx(tb + barS)), 0, nF);
+    let oM = 0, oH = 0;
+    for (let i = 1; i < 16; i += 2) { oM += Math.min(1, SM[a16 + i]); oH += Math.min(1, SH[a16 + i]); }
+    oM /= 8; oH /= 8;
+    let ea = 0, ebs = 0; const cs = [], fl = [];
+    for (let f = fa; f < fe; f++) { ea += M.eAll[f]; ebs += M.eBass[f]; cs.push(M.cent[f]); fl.push(M.flat[f]); }
+    const nfr = Math.max(1, fe - fa); ea /= nfr; ebs /= nfr;
+    cs.sort((x, z) => x - z); fl.sort((x, z) => x - z);
+    const cMed = cs[cs.length >> 1] || 0, flMed = fl[fl.length >> 1] || 0;
+    let cMean = 0, cVar = 0; for (const v of cs) cMean += v; cMean /= Math.max(1, cs.length);
+    for (const v of cs) cVar += (v - cMean) * (v - cMean);
+    const cStd = Math.sqrt(cVar / Math.max(1, cs.length));
+    // Ton: Mitte des Ton-Bildes liegt bei Probe g*hopC + Nc/2
+    const ca = clampI(Math.round((tb * SR - M.Nc / 2) / M.hopC), 0, nC), ce = clampI(Math.round(((tb + barS) * SR - M.Nc / 2) / M.hopC), 0, nC), ch = new Float64Array(12);
+    let ct = 0, top = 0;
+    for (let g = ca; g < ce; g++) for (let k = 0; k < 12; k++) ch[k] += M.chroma[g * 12 + k];
+    for (let k = 0; k < 12; k++) { ct += ch[k]; if (ch[k] > ch[top]) top = k; }
+    const pm = pulse(M.envM, b), ph = pulse(M.envH, b);
+    bars.push({
+      db: 10 * Math.log10(ea + 1e-12), dbB: 10 * Math.log10(ebs + 1e-12), oM, oH, c: cMed, fl: flMed, cb: cStd / (cMean + 1e-6), ton: top, tk: ct > 0 ? ch[top] / ct : 0,
+      p8: pm[0] + 0.7 * ph[0], p16: pm[1] + 0.7 * ph[1], p32: pm[2] + 0.7 * ph[2], puls: (0.5 * pm[0] + pm[1] + 1.5 * pm[2]) + 0.7 * (ph[1] + 1.5 * ph[2])
+    });
+    if (tick && (b & 15) === 15) await tick();
+  }
+  // Bass-Pegel auf den Track beziehen (das Spektrum ist nicht normiert)
+  const dbBref = pct(bars.map(x => x.dbB), 0.9), E = [];
+  for (const x of bars) {
+    x.druck = 0.6 * kmMap(x.db, -24, -5) + 0.4 * kmMap(x.dbB - dbBref, -18, 0);
+    x.hektik = Math.max(0, Math.min(1, 0.75 * kmMap(x.puls, KM_PULS_LO, KM_PULS_HI) + 0.25 * ((x.oM + x.oH) / 2) / 0.75));
+    x.raster = x.p32 > 0.8 * x.p16 && x.p32 > x.p8 ? 32 : (x.p16 >= x.p8 ? 16 : 8);
+    x.schaerfe = Math.max(0, Math.min(1, 0.75 * kmMap(Math.log2(Math.max(1, x.c)), Math.log2(500), Math.log2(3200)) + 0.25 * kmMap(x.fl, 0.002, 0.08)));
+    x.beweg = kmMap(x.cb, 0.25, 0.95);
+    E.push((x.druck + x.hektik + x.schaerfe) / 3);
+  }
+  bars.forEach((x, i) => {                                             // Spannung: dieser Takt gegen den Schnitt der 8 davor
+    let s = 0, n = 0; for (let j = Math.max(0, i - 8); j < i; j++) { s += E[j]; n++; }
+    x.spann = n ? Math.max(0, Math.min(1, 0.5 + 2.8 * (E[i] - s / n))) : 0.5;
+  });
+  const F32 = key => Float32Array.from(bars, x => x[key]);
+  const K = { t0, barS, n: nBars, dl, druck: F32('druck'), hektik: F32('hektik'), schaerfe: F32('schaerfe'), beweg: F32('beweg'), spann: F32('spann'), tk: F32('tk'), puls: F32('puls'), db: F32('db'),
+    ton: Uint8Array.from(bars, x => x.ton), raster: Uint8Array.from(bars, x => x.raster) };
+  // Mittel der vollen Takte (ohne die leisesten 35 %), Tonart und Puls-Raster des Tracks
+  const thr = pct(K.db, 0.35), full = []; for (let j = 0; j < nBars; j++) if (K.db[j] >= thr) full.push(j);
+  const avg = key => { let s = 0; for (const j of full) s += K[key][j]; return s / Math.max(1, full.length); };
+  K.avg = { druck: avg('druck'), hektik: avg('hektik'), schaerfe: avg('schaerfe'), beweg: avg('beweg'), spann: avg('spann') };
+  // Eigene Skala des Tracks: 10-%- bis 90-%-Wert der vollen Takte. Damit nutzt ein ruhiger Track die ganze Breite (Anzeige und Bildwahl bleiben aber absolut vergleichbar).
+  K.lo = {}; K.hi = {};
+  for (const key of ['druck', 'hektik', 'schaerfe', 'beweg']) { const v = full.map(j => K[key][j]); K.lo[key] = pct(v, 0.1); K.hi[key] = pct(v, 0.9); }
+  const cnt = new Array(12).fill(0); for (let j = 0; j < nBars; j++) if (K.tk[j] > 0.15) cnt[K.ton[j]]++;
+  let key = 0; for (let k = 1; k < 12; k++) if (cnt[k] > cnt[key]) key = k;
+  K.key = key; K.keyShare = cnt[key] / Math.max(1, nBars);
+  const rc = { 8: 0, 16: 0, 32: 0 }; for (const j of full) rc[K.raster[j]]++;
+  let rr = 8; for (const r of [16, 32]) if (rc[r] > rc[rr]) rr = r;
+  K.puls16 = rr; K.pulsShare = rc[rr] / Math.max(1, full.length);
+  return K;
+}
+const KM_NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+// Für das Protokoll: Mittel der vollen Takte
+function kmSummary(A) {
+  const K = A.km; if (!K) return '';
+  const p = x => Math.round(100 * x);
+  return 'Druck ' + p(K.avg.druck) + ' · Hektik ' + p(K.avg.hektik) + ' · Schärfe ' + p(K.avg.schaerfe) + ' · Spannung ' + p(K.avg.spann) + ' · Filter ' + p(K.avg.beweg) + ' · Puls ' + K.puls16 + 'tel (' + p(K.pulsShare) + ' %) · Grundton ' + KM_NOTES[K.key] + ' (' + p(K.keyShare) + ' %)';
+}

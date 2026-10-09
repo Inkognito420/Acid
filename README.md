@@ -10,7 +10,7 @@ Eigene Tracks laden, Takt und Abschnitte werden vorab erkannt (Scan), Milkdrop
 
 - `index.html` - nur noch das Geruest: Leiste, Menue, Knoepfe und die Liste der Programmteile
 - `style.css` - Aussehen (Farben, Leiste, Menue)
-- `js/analyse.js` - Track-Analyse (Tempo, Takt, Abschnitte), reine Rechenfunktion
+- `js/analyse.js` - Track-Analyse (Tempo, Takt, Abschnitte, Klangbild, Klangmesser), reine Rechenfunktionen
 - `js/01-grundlagen.js` bis `js/16-start.js` - das Programm in 16 Teilen, in dieser Reihenfolge geladen:
   01 Grundlagen (Start, Audio-Weg, Protokoll, Zustand) · 02 Instrumente hoeren ·
   03 Eigene Shader · 04 Bildschirm (Groesse, Farbe) · 05 Presets vermessen ·
@@ -43,3 +43,24 @@ als Boegen, Abschnittsgrenzen als Ringe, der Drop als Tor.
 - Texturformat (Einheit 3): 4 Schritte pro Schlag, R Kick, G Hi-Hat, B Mitten,
   A Abschnitt (siehe `AcidShaderPlayer.buildTrack`).
 - Debug: Seite mit `?debug` oeffnen, dann `window.__FLUG`.
+
+## Klangmesser (ab Build 43)
+
+Messwerte pro Takt, im Scan berechnet (`kmSetup`, `kmFrame`, `kmChroma`, `kmBars` in `js/analyse.js`, Ergebnis `A.km`).
+Rechenwege und Skalen stammen aus dem eigenständigen Klangmesser, laufen hier aber auf dem Raster des Scans
+(Tempo auf 0,01 BPM, echte Takt-Eins) und im selben Durchlauf wie der Scan (keine zweite Dekodierung).
+
+| Wert | Bedeutung | Wirkung im Visualizer |
+| --- | --- | --- |
+| Druck | Lautstärke und Bass | Bildwahl: Helligkeit |
+| Hektik | 8tel/16tel/32tel-Puls in Mitten und Höhen | Bildwahl: Bewegung, Funken-Menge |
+| Schärfe | Klangschwerpunkt, Rauschigkeit | Bildwahl: Sättigung |
+| Spannung | Takt gegen die 8 davor (0,5 = neutral) | Stärke des Kick-Pulses (0,7 bis 1,3) |
+| Filter | Schwanken des Klangschwerpunkts im Takt | Acid-Farbe (0,6 bis 1,4), Bildwahl: Acid-Grün |
+| Ton | stärkster der 12 Töne (ab 100 Hz) | Farbsprung beim Tonwechsel (30° pro Halbton) |
+
+- Druck, Hektik, Schärfe und Filter werden für die Bildwahl auf den Track selbst bezogen (`K.lo`/`K.hi`, 10- bis 90-%-Wert der vollen Takte), Spannung bleibt absolut.
+- Ohne Scan (Mikro, langer Mix) fehlen die Werte, alles läuft dann wie vorher.
+- Fehler im Klangmesser stoppen den Scan nicht: `A.kmErr`, Protokollzeile „Klangmesser fehlgeschlagen“.
+- Protokoll nach dem Scan: „Klangmesser (… ms): Druck … · Hektik … · Grundton …“. Die Stimmungszeile zeigt zusätzlich Puls und Grundton.
+- Test ohne Browser: Rechenfunktionen laufen in Node (`vm.runInThisContext` auf `js/analyse.js`), z. B. mit einem künstlichen Track.

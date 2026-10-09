@@ -60,7 +60,8 @@ function beatFrame(t) {
     rFast = ema(rFast, r, dt, 40); rSlow = ema(rSlow, r, dt, 1500);
     const d = rFast - rSlow;
     acidAct = ema(acidAct, Math.abs(d), dt, 300);
-    const hTarget = toggles.acid && (m1 + m2) > 1e-4 ? clamp(d * 300, -50, 50) : 0;
+    const kn = kmNow();                                                    // Build 43: Filterfahrt des Takts aus dem Scan (0,6 ohne bis 1,4 mit starker Fahrt)
+    const hTarget = toggles.acid && (m1 + m2) > 1e-4 ? clamp(d * 300 * (kn ? 0.6 + 0.8 * kn.beweg : 1), -60, 60) : 0;
     hue = ema(hue, hTarget, dt, 80);
 
     // Stimmung live mitschreiben (für Tracks ohne Scan)
@@ -210,7 +211,9 @@ function scanFrame(t) {
     const mainSec = type === 'groove' || type === 'drop' || type === 'buildup';
     if (prevBi !== null && bi === prevBi + 1 && (mainSec || (kaHere !== null && kaHere >= 0.35)) && !audio.paused) {
       const sinceDrop = type === 'drop' ? 1 : 0;
-      kickGlow = 1; pulse = Math.max(pulse, type === 'drop' ? 0.05 : type === 'buildup' ? 0.02 + 0.03 * build : mainSec ? 0.035 : 0.025);
+      const kmc = A.km && bi - A.barPhase >= 0 && Math.floor((bi - A.barPhase) / 4) < A.km.n ? A.km.spann[Math.floor((bi - A.barPhase) / 4)] : 0.5;   // Build 43: Spannung des Takts, 0,7 (löst sich) bis 1,3 (baut sich auf, Drop-Anfang)
+      const kmg = 0.7 + 0.6 * kmc;
+      kickGlow = 1; pulse = Math.max(pulse, kmg * (type === 'drop' ? 0.05 : type === 'buildup' ? 0.02 + 0.03 * build : mainSec ? 0.035 : 0.025));
       { const ka = kaHere === null ? 1 : kaHere; if (ka >= 0.35) AMI.hk = Math.max(AMI.hk, 0.5 + 0.5 * ka); }   // Instrumente hören: nur echte Kicks, mit gemessener Stärke
       if (beat.n % 4 === 0) { pulse += 0.01 * (1 + sinceDrop); onBar(type); }   // Takt-Eins etwas stärker, Farbe springt weiter
     }

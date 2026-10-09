@@ -70,6 +70,32 @@ function scanKlang() {
   for (let j = Math.max(0, j0); j <= j0 + 3 && j < K.n; j++) { const o = j * 3; if (K.share[o] + K.share[o + 1] + K.share[o + 2] < 0.5) continue; v[0] += K.share[o]; v[1] += K.share[o + 1]; v[2] += K.share[o + 2]; n++; }
   return n ? v.map(x => x / n) : null;
 }
+// Build 43: Klangmesser pro Takt (Hektik, Schärfe, Druck, Filter, Spannung, Ton) aus dem Scan.
+// Druck/Hektik/Schärfe/Filter sind auf den Track selbst bezogen (10-%- bis 90-%-Wert der vollen Takte, 0..1), Spannung ist absolut (0,5 = neutral).
+const KM_KEYS = ['druck', 'hektik', 'schaerfe', 'beweg'];
+const kmRel = (K, key, v) => clamp((v - K.lo[key]) / Math.max(0.12, K.hi[key] - K.lo[key]));
+let kmCacheK = null, kmCacheJ = -2, kmCache = null;
+function kmBarVals(K, j) {
+  const o = { j, spann: K.spann[j], ton: K.ton[j], tk: K.tk[j] };
+  for (const k of KM_KEYS) o[k] = kmRel(K, k, K[k][j]);
+  return o;
+}
+function kmNow() {                                  // aktueller Takt, nur mit Scan und während es läuft
+  const A = curAnalysis, K = A && A.km; if (!K || !scanActive()) return null;
+  const ts = audio.currentTime - (+latEl.value) / 1000, j = Math.floor((ts - K.t0) / K.barS);
+  if (j < 0 || j >= K.n) return null;
+  if (K !== kmCacheK || j !== kmCacheJ) { kmCacheK = K; kmCacheJ = j; kmCache = kmBarVals(K, j); }
+  return kmCache;
+}
+function kmAhead(n) {                               // Mittel aus aktuellem Takt und den nächsten n (für die Bildwahl: das neue Bild läuft ja länger)
+  const A = curAnalysis, K = A && A.km; if (!K || !scanActive()) return null;
+  const ts = audio.currentTime - (+latEl.value) / 1000, j0 = Math.floor((ts - K.t0) / K.barS);
+  const o = { druck: 0, hektik: 0, schaerfe: 0, beweg: 0, spann: 0 }; let c = 0;
+  for (let j = Math.max(0, j0); j <= j0 + n && j < K.n; j++) { const v = kmBarVals(K, j); for (const k of KM_KEYS) o[k] += v[k]; o.spann += v.spann; c++; }
+  if (!c) return null;
+  for (const k in o) o[k] /= c;
+  return o;
+}
 function soundTarget() {
   const sk = scanKlang();
   if (sk) { if (sectionKey() === 'drop') { sk[0] += 0.3; const s = sk[0] + sk[1] + sk[2]; return sk.map(x => x / s); } return sk; }
@@ -157,6 +183,14 @@ function moodTarget(section) {
     tg.s = clamp(tg.s + md.acid * 0.25);
     if (md.acid > 0.35) { tg.hue = 75 * Math.PI / 180; tg.hueW = md.acid * 1.2; }
     else if (md.bright < 0.35) { tg.hue = 250 * Math.PI / 180; tg.hueW = 0.5; }
+  }
+  // Build 43: Klangmesser des laufenden Abschnitts. Hektik -> Bewegung, Schärfe -> Sättigung, Druck -> Helligkeit, Filterfahrten -> Acid-Grün.
+  const km = toggles.mood ? kmAhead(3) : null;
+  if (km) {
+    tg.m = clamp(tg.m + (km.hektik - 0.5) * 0.5);
+    tg.s = clamp(tg.s + (km.schaerfe - 0.5) * 0.4);
+    tg.b = clamp(tg.b + (km.druck - 0.5) * 0.3);
+    if (km.beweg > 0.55) { tg.hue = 75 * Math.PI / 180; tg.hueW = Math.max(tg.hueW, (km.beweg - 0.4) * 1.5); }
   }
   return tg;
 }

@@ -83,8 +83,8 @@ function snapshot() {
 }
 const $$ = id => document.getElementById(id);
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD = 'Build 42 · Kick auch im Intro, Break und Outro';
-const BUILD_NO = 42;
+const BUILD = 'Build 43 · Klangmesser im Scan: Hektik, Schärfe, Spannung, Filter, Ton pro Takt';
+const BUILD_NO = 43;
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);
@@ -218,8 +218,17 @@ function onBar(type) {
   AMI.bar = 1;                                   // Instrumente hören: Kick auf der Eins etwas stärker
   if (!toggles.bar || frozen || dropPre > 0.05) return;   // vor dem Drop bleibt die Farbe stehen
   const st = BAR_STEP[type] || 0; if (!st) return;
-  barHueTarget += st; barSteps++;
-  if (barSteps % 32 === 1) rea('Takt-Farbe: +' + st + '° auf der Eins (' + type + '), jetzt ' + Math.round(barHueTarget % 360) + '°');
+  // Build 43: mit Klangmesser kommt zum Takt-Schritt ein Farbsprung, wenn der Grundton des Takts wechselt (jeder der 12 Töne ist 30° auf dem Farbkreis, kürzester Weg).
+  // Bleibt der Ton gleich, ändert sich nichts gegenüber vorher.
+  const KB = curAnalysis && curAnalysis.km, kj = KB && scanActive() ? Math.floor(beat.n / 4) : -1;
+  let tonJump = 0, tonTxt = '';
+  if (kj >= 1 && kj < KB.n && KB.tk[kj] >= 0.2 && KB.tk[kj - 1] >= 0.2 && KB.ton[kj] !== KB.ton[kj - 1]) {
+    const dn = ((KB.ton[kj] - KB.ton[kj - 1] + 18) % 12) - 6;     // -6 .. +5 Halbtöne
+    tonJump = dn * 30; tonTxt = ' · Ton ' + KM_NOTES[KB.ton[kj - 1]] + ' → ' + KM_NOTES[KB.ton[kj]] + ': ' + (tonJump > 0 ? '+' : '') + tonJump + '°';
+  }
+  barHueTarget += st + tonJump; barSteps++;
+  if (tonJump) rea('Takt-Farbe: +' + st + '° auf der Eins (' + type + ')' + tonTxt + ', jetzt ' + Math.round(((barHueTarget % 360) + 360) % 360) + '°');
+  else if (barSteps % 32 === 1) rea('Takt-Farbe: +' + st + '° auf der Eins (' + type + '), jetzt ' + Math.round(barHueTarget % 360) + '°');
 }
 let hiFast = 0, hiAtBreak = 0, buildStart = 0;
 let rFast = 0, rSlow = 0, acidAct = 0;

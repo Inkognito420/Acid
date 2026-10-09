@@ -53,8 +53,10 @@ function applyScanFor(f) {
       erg('Scan fertig: ' + (A.grid ? A.bpm.toFixed(2) + ' BPM, ' + A.drops + ' Drops' : 'kein festes Raster'));
       if (A.klang) erg('Klangbild (Schläge und Töne getrennt, ' + A.klangMs + ' ms): ' + klangSummary(A));
       else if (A.klangErr) err('Klangbild fehlgeschlagen: ' + A.klangErr);
+      if (A.km) erg('Klangmesser (' + A.kmMs + ' ms): ' + kmSummary(A));
+      else if (A.kmErr) err('Klangmesser fehlgeschlagen: ' + A.kmErr);
       setTrackInfo(A.grid ? A.drops + (A.drops === 1 ? ' Drop' : ' Drops') : 'kein festes Raster, läuft live');
-      $('mood').textContent = 'Stimmung: ' + moodText(A.mood) + ' · ' + (A.grid ? A.bpm.toFixed(1) + ' BPM' : 'ohne festes Tempo');
+      $('mood').textContent = 'Stimmung: ' + moodText(A.mood) + ' · ' + (A.grid ? A.bpm.toFixed(1) + ' BPM' : 'ohne festes Tempo') + (A.km ? ' · Puls ' + A.km.puls16 + 'tel' + (A.km.keyShare >= 0.25 ? ' · Grundton ' + KM_NOTES[A.km.key] : '') : '');
       drawTimeline(A);
     }
     if (queue[qi + 1]) ensureScan(queue[qi + 1]);

@@ -36,9 +36,14 @@ async function analyzeFile(file) {
   // Build 41: Klangbild für „Schläge und Töne trennen“ (64 Bänder pro Bild, siehe js/analyse.js)
   let KL = null, KM = null;
   try { KL = klangSetup(SR); KM = new Float32Array(total * KL.NB); } catch (e) { KL = null; }
+  // Build 43: Klangmesser (Hektik, Schärfe, Spannung, Filter, Ton pro Takt, siehe js/analyse.js). Läuft im selben Durchlauf, Fehler stoppen den Scan nicht.
+  let KX = null, kxErr = '';
+  try { KX = kmSetup(SR, hop, total); } catch (e) { KX = null; kxErr = String(e && e.message || e); }
+  const PAD = 8 * hop;                               // etwas mehr rendern, damit die Fenster am Abschnittsende nicht ins Leere greifen
+  const visible = () => document.visibilityState === 'visible';
   for (let f0 = 0; f0 < total; f0 += segFrames) {
     const frames = Math.min(segFrames, total - f0);
-    const off = new OAC(5, frames * hop, SR);
+    const off = new OAC(5, frames * hop + PAD, SR);
     const src = off.createBufferSource(); src.buffer = decoded;
     const merger = off.createChannelMerger(5);
     const bq = (type, f) => { const b = off.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = 0.707; return b; };
@@ -49,7 +54,7 @@ async function analyzeFile(file) {
     chain(bq('highpass', 7000), bq('highpass', 7000)).connect(merger, 0, 3);
     src.connect(merger, 0, 4);
     merger.connect(off.destination);
-    src.start(0, f0 * hop / SR, frames * hop / SR);
+    src.start(0, f0 * hop / SR, (frames * hop + PAD) / SR);
     const r = await off.startRendering();
     for (let c = 0; c < 5; c++) {
       const d = r.getChannelData(c), out = env[keys[c]];
@@ -67,7 +72,19 @@ async function analyzeFile(file) {
         }
       }
     }
-    if (KL) { const d4 = r.getChannelData(4); for (let f = 0; f < frames; f++) klangFrame(KL, d4, f * hop, KM, (f0 + f) * KL.NB); }
+    const d4 = r.getChannelData(4);
+    if (KL) { for (let f = 0; f < frames; f++) klangFrame(KL, d4, f * hop, KM, (f0 + f) * KL.NB); }
+    if (KX) {
+      try {
+        const nFine = frames * 2, base = f0 * 2;
+        for (let c0 = 0; c0 < nFine; c0 += 256) {                 // in Häppchen von ca. 30 ms, damit das Bild flüssig bleibt
+          const c1 = Math.min(nFine, c0 + 256);
+          for (let q = c0; q < c1; q++) kmFrame(KX, d4, q * KX.hopF, base + q);
+          if (visible()) await tick();
+        }
+        for (let p = 0, g = f0 * hop / KX.hopC; p + KX.Nc / 2 < frames * hop; p += KX.hopC, g++) kmChroma(KX, d4, p, g);
+      } catch (e) { KX = null; kxErr = String(e && e.message || e); }
+    }
     report(Math.min(0.9, (f0 + frames) / total));
     await tick();
   }
@@ -76,6 +93,10 @@ async function analyzeFile(file) {
     try { const k0 = performance.now(); A.klang = klangBars(A, await klangSplit(KM, total, KL.fc, tick), hop / SR); A.klangMs = Math.round(performance.now() - k0); }
     catch (e) { A.klang = null; A.klangErr = String(e && e.message || e); }
   }
+  if (KX && A.grid) {
+    try { const k0 = performance.now(); A.km = await kmBars(A, KX, tick); A.kmMs = Math.round(performance.now() - k0); }
+    catch (e) { A.km = null; A.kmErr = String(e && e.message || e); }
+  } else if (kxErr) A.kmErr = kxErr;
   A.file = file;
   return A;
 }
