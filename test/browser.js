@@ -314,7 +314,7 @@ const SZ = {
     const r = await page.evaluate(() => {
       const alt = curAnalysis.km;
       const lauf = tonFolge => {
-        const n = tonFolge.length; curAnalysis.km = { n, ton: tonFolge, tk: tonFolge.map(() => 0.5) }; tonLast = -1; toggles.bar = true; dropPre = 0;
+        const n = tonFolge.length; curAnalysis.km = { n, t0: 1e9, barS: 1, ton: tonFolge, tk: tonFolge.map(() => 0.5) }; tonLast = -1; toggles.bar = true; dropPre = 0;
         const v = barHueTarget; for (let k = 1; k < n; k++) { beat.n = k * 4; onBar('groove'); } return barHueTarget - v - 20 * (n - 1);
       };
       const pendeln = lauf([9, 4, 9, 4, 9, 4, 9, 4]), wechsel = lauf([9, 9, 9, 4, 4, 4, 4]);
@@ -324,6 +324,9 @@ const SZ = {
     });
     check('Takt-Farbe: Pendeln zwischen zwei Tönen gibt keinen Farbsprung, ein echter Wechsel (A→E, 3 Takte) genau einen', r.pendeln === 0 && r.wechsel === -150, JSON.stringify(r));
     check('Drop-Zoom: auch bei übergroßem Anschlag bleibt der Zoom unter 8 % (vorher bis 12,5 %)', r.z > 0.05 && r.z <= 0.08, JSON.stringify(r));
+    await page.waitForFunction(() => curAnalysis && curAnalysis.km, null, { timeout: 120000, polling: 200 });
+    const sw = await page.evaluate(() => { const K = curAnalysis.km, v = Array.from(K.sweep || []); return { n: K.n, len: v.length, max: Math.max(0, ...v.map(Math.abs)), ok: v.every(x => x >= -1 && x <= 1) }; });
+    check('Filterfahrt: pro Takt ein Wert zwischen -1 und +1, im Test-Track mit wandernder Filterfrequenz nicht überall 0', sw.len === sw.n && sw.ok && sw.max > 0.1, JSON.stringify(sw));
     const q = await page.evaluate(() => { const t = targetSize(true); return { q: $('quality').value, lang: Math.max(t[0], t[1]), ton: TON_MIN }; });
     check('Standard-Auflösung: 1080p, längste Seite höchstens 1920 px; Ton-Schwelle 0,10', q.q === '1080' && q.lang <= 1920 && q.ton === 0.10, JSON.stringify(q));
     await close();

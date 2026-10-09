@@ -75,7 +75,7 @@ const KM_KEYS = ['druck', 'hektik', 'schaerfe', 'beweg'];
 const kmRel = (K, key, v) => clamp((v - K.lo[key]) / Math.max(0.12, K.hi[key] - K.lo[key]));
 let kmCacheK = null, kmCacheJ = -2, kmCache = null;
 function kmBarVals(K, j) {
-  const o = { j, spann: K.spann[j], ton: K.ton[j], tk: K.tk[j] };
+  const o = { j, spann: K.spann[j], sweep: K.sweep ? K.sweep[j] : 0, ton: K.ton[j], tk: K.tk[j] };
   for (const k of KM_KEYS) o[k] = kmRel(K, k, K[k][j]);
   return o;
 }

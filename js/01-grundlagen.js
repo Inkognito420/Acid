@@ -91,8 +91,8 @@ function snapshot() {
   } catch (e) { return 'Status nicht lesbar: ' + e.message; }
 }
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD = 'Build 52 · Standard-Auflösung 1080p (weniger Lastbremse und Sprünge), Takt-Farbe reagiert früher auf Töne';
-const BUILD_NO = 52;
+const BUILD = 'Build 53 · Filterfahrt: öffnender Filter = Farben blühen auf und drehen schneller';
+const BUILD_NO = 53;
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);
@@ -256,6 +256,7 @@ const beat = { t: performance.now(), n: 0, state: 'warten', lastKick: 0, kickStr
 let levelAvg = 0, lastT = performance.now(), sectionChangeT = 0, sectionBeat0 = 0;
 const PHRASE_BEATS = 16 * 4;                     // Phrase = 16 Takte, wird ab Abschnittsbeginn gezählt, nicht mehr nach festem Zähler
 const MIN_REST_BEATS = 8 * 4;                    // kurz vor einem Abschnittsende kein Extra-Wechsel: der Wechsel kommt dann mit dem Abschnitt
+let swLive = 0;                                   // Build 53: geglättete Filterfahrt (-1..+1) des aktuellen Takts
 let kickGlow = 0, pulse = 0, flash = 0, build = 0, vign = 0, hue = 0, lastHue = 0;
 // Takt-Farbe: eigener Farbton-Anteil, springt auf der Takt-Eins weiter (hue = Acid-Anteil, barHue = Takt-Anteil)
 const TON_MIN = 0.10;                            // Build 52: Ton-Sicherheit ab 10 % (vorher 15 %): in dichten Techno-Takten liegt sie bei 0,15-0,18, ein Track mit 17 % löste in 7 Minuten keinen einzigen Farbsprung aus
@@ -268,7 +269,8 @@ function onBar(type) {
   shBar = 1;                                     // eigene Shader: Takt-Eins
   AMI.bar = 1;                                   // Instrumente hören: Kick auf der Eins etwas stärker
   if (!toggles.bar || frozen || dropPre > 0.05) return;   // vor dem Drop bleibt die Farbe stehen
-  const st = BAR_STEP[type] || 0; if (!st) return;
+  let st = BAR_STEP[type] || 0; if (!st) return;
+  const kw = kmNow(); if (kw && kw.sweep > 0) st = Math.round(st * (1 + 0.5 * kw.sweep));   // Build 53: öffnet sich der Filter, dreht die Farbe schneller
   // Build 43: mit Klangmesser kommt zum Takt-Schritt ein Farbsprung, wenn der Grundton des Takts wechselt (jeder der 12 Töne ist 30° auf dem Farbkreis, kürzester Weg).
   // Bleibt der Ton gleich, ändert sich nichts gegenüber vorher. Schwelle 0,15: in lauten Takten liegt die Ton-Sicherheit bei 0,15-0,18 (Build 44 mit 0,20 sprang nie).
   const KB = curAnalysis && curAnalysis.km, kj = KB && scanActive() ? Math.floor(beat.n / 4) : -1;
