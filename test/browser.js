@@ -324,6 +324,8 @@ const SZ = {
     });
     check('Takt-Farbe: Pendeln zwischen zwei Tönen gibt keinen Farbsprung, ein echter Wechsel (A→E, 3 Takte) genau einen', r.pendeln === 0 && r.wechsel === -150, JSON.stringify(r));
     check('Drop-Zoom: auch bei übergroßem Anschlag bleibt der Zoom unter 8 % (vorher bis 12,5 %)', r.z > 0.05 && r.z <= 0.08, JSON.stringify(r));
+    const q = await page.evaluate(() => { const t = targetSize(true); return { q: $('quality').value, lang: Math.max(t[0], t[1]), ton: TON_MIN }; });
+    check('Standard-Auflösung: 1080p, längste Seite höchstens 1920 px; Ton-Schwelle 0,10', q.q === '1080' && q.lang <= 1920 && q.ton === 0.10, JSON.stringify(q));
     await close();
   },
   async manifest() {
