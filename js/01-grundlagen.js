@@ -83,8 +83,8 @@ function snapshot() {
 }
 const $$ = id => document.getElementById(id);
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD = 'Build 44 · Lastbremse wartet, solange der Scan rechnet';
-const BUILD_NO = 44;
+const BUILD = 'Build 45 · Farbsprung beim Tonwechsel springt jetzt auch in lauten Takten an';
+const BUILD_NO = 45;
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);
@@ -219,10 +219,10 @@ function onBar(type) {
   if (!toggles.bar || frozen || dropPre > 0.05) return;   // vor dem Drop bleibt die Farbe stehen
   const st = BAR_STEP[type] || 0; if (!st) return;
   // Build 43: mit Klangmesser kommt zum Takt-Schritt ein Farbsprung, wenn der Grundton des Takts wechselt (jeder der 12 Töne ist 30° auf dem Farbkreis, kürzester Weg).
-  // Bleibt der Ton gleich, ändert sich nichts gegenüber vorher.
+  // Bleibt der Ton gleich, ändert sich nichts gegenüber vorher. Schwelle 0,15: in lauten Takten liegt die Ton-Sicherheit bei 0,15-0,18 (Build 44 mit 0,20 sprang nie).
   const KB = curAnalysis && curAnalysis.km, kj = KB && scanActive() ? Math.floor(beat.n / 4) : -1;
   let tonJump = 0, tonTxt = '';
-  if (kj >= 1 && kj < KB.n && KB.tk[kj] >= 0.2 && KB.tk[kj - 1] >= 0.2 && KB.ton[kj] !== KB.ton[kj - 1]) {
+  if (kj >= 1 && kj < KB.n && KB.tk[kj] >= 0.15 && KB.tk[kj - 1] >= 0.15 && KB.ton[kj] !== KB.ton[kj - 1]) {
     const dn = ((KB.ton[kj] - KB.ton[kj - 1] + 18) % 12) - 6;     // -6 .. +5 Halbtöne
     tonJump = dn * 30; tonTxt = ' · Ton ' + KM_NOTES[KB.ton[kj - 1]] + ' → ' + KM_NOTES[KB.ton[kj]] + ': ' + (tonJump > 0 ? '+' : '') + tonJump + '°';
   }
