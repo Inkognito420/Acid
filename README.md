@@ -10,6 +10,8 @@ Eigene Tracks laden, Takt und Abschnitte werden vorab erkannt (Scan), Milkdrop
 
 - `index.html` - nur noch das Geruest: Leiste, Menue, Knoepfe und die Liste der Programmteile
 - `style.css` - Aussehen (Farben, Leiste, Menue)
+- `app-files.js` - Liste aller Programmteile in Ladereihenfolge (liest der Loader in index.html und `sw.js`)
+- `sw.js`, `manifest.webmanifest`, `icon-*.png` - Offline-Betrieb und Home-Bildschirm-App: nach dem ersten Laden startet die App auch ohne Netz (eigene Dateien und Butterchurn werden gespeichert; Schriften nicht)
 - `js/analyse.js` - Track-Analyse (Tempo, Takt, Abschnitte, Klangbild, Klangmesser), reine Rechenfunktionen
 - `js/01-grundlagen.js` bis `js/16-start.js` - das Programm in 16 Teilen, in dieser Reihenfolge geladen:
   01 Grundlagen (Start, Audio-Weg, Protokoll, Zustand) · 02 Instrumente hoeren ·
@@ -20,15 +22,18 @@ Eigene Tracks laden, Takt und Abschnitte werden vorab erkannt (Scan), Milkdrop
   14 Track-Scan · 15 Tracks und Mikro · 16 Start
   Alle Teile teilen sich einen gemeinsamen Bereich; jeder Teil prueft am Anfang, ob der
   vorige fertig ist (`window.__AM_STEP`), sonst startet er nicht.
-  Nach jeder Aenderung die Zahl `?b=` in index.html hochzaehlen (= Build), damit das
-  Handy keine alten Teile aus dem Zwischenspeicher nimmt.
+  Nach jeder Aenderung die Build-Nummer `var B=...` in index.html hochzaehlen (steht nur dort; der Loader haengt sie als `?b=` an alle Teile),
+  damit das Handy keine alten Teile aus dem Zwischenspeicher nimmt. Neue Teile in `app-files.js` eintragen (einzige Liste, Reihenfolge = Ladereihenfolge).
 - `acid-shader.js` - eigene Shader (WebGL) und der Player dafuer
 - `acid-profile.js`, `acid-presets.js` - vermessene Milkdrop-Presets, eigene Presets
 - `adaptive-preset-blender.js`, `audio-reactive-controller.js` - Presets mischen, Reaktion
 - `shader-test.html` - Testseite fuer die eigenen Shader (Messlauf)
 - `acid-bild-*.jpg` - Bilder fuer die Bild-Presets
 
-Syntax pruefen: `for f in js/*.js; do node --check $f; done`
+Pruefen (laeuft auch bei jedem Push als GitHub-Aktion, `.github/workflows/pruefen.yml`):
+`for f in js/*.js *.js; do node --check $f; done; node test/files.test.js; node test/analyse.test.js`
+
+Werkstatt-Schalter stehen an einer Stelle: Tabelle `TOGGLES` in `js/01-grundlagen.js` (Name, Gruppe, Beschriftung, Standard, Hinweis). Die Knoepfe entstehen daraus.
 
 ## Track-Flug (ab Build 36, seit Build 38 aus)
 

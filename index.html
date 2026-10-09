@@ -6,9 +6,11 @@
 <title>Acid Milkdrop</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#000000">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Azeret+Mono:wght@400;600&display=swap">
-<script>var B=46;document.write('<link rel="stylesheet" href="style.css?b='+B+'">')</script>
+<script>var B=47;document.write('<link rel="stylesheet" href="style.css?b='+B+'"><script src="app-files.js?b='+B+'"><\/script>')</script>
 </head>
 <body>
 
@@ -105,31 +107,14 @@
     <div id="werk" hidden>
       <div class="note">Werkstatt: nur zum Ausprobieren und Vergleichen. Grün = an. Mit „Alles auf Auto“ oben ist alles wieder wie gedacht.</div>
       <div class="grp"><span class="gl">Bildwechsel</span>
-        <button id="t-mood" type="button" class="hot" title="Presets passend zu Klang, Abschnitt und Stimmung">Stimmungs-Presets</button>
-        <button id="t-phrase" type="button" class="hot" title="Wechsel auf Phrasen und Abschnitten im Takt">Phrasen-Sync</button>
-        <button id="t-drop" type="button" class="hot" title="Harter Schnitt mit Blitz im Drop">Drop-Cut</button>
-        <button id="t-own" type="button" class="hot" title="Ab und zu kommt einer der eigenen Shader (Peak Time, Driving, Acid) statt eines Milkdrop-Presets, passend zum Abschnitt">Eigene Shader</button>
-        <button id="t-flug" type="button" class="hot" title="Zeigt automatisch den Track-Flug, wenn ein Drop naht (ab 12 Takten vorher bis 8 Takte danach). Nur bei gescannten Tracks.">Track-Flug bei Drops</button>
       </div>
       <div class="grp"><span class="gl">Effekte</span>
-        <button id="t-build" type="button" class="hot" title="Spannung vor dem Drop: Zoom, Vignette, Funken">Build-up</button>
-        <button id="t-pulse" type="button" class="hot" title="Bild pumpt mit dem Kick">Kick-Puls</button>
-        <button id="t-spark" type="button" class="hot" title="Funken und Ringe auf Hi-Hats und Snares">Hats &amp; Snares</button>
-        <button id="t-morph" type="button" class="hot" title="Beim Bildwechsel verformt sich das Bild kurz mit dem Klang. Mit Mischpult: Drehen mit der 303, Schwanken im Takt, Stoß beim Bildwechsel">Übergangs-Verformung</button>
-        <button id="t-mix" type="button" class="hot" title="Körper &amp; Funken: Das Bild hängt an Federn, die auf das Tempo gestimmt sind. Funken kosten Energie aus einem Konto, vor dem Drop wird gespart. Aus = Effekte wie vor Build 46 (zum Vergleichen)">Mischpult</button>
       </div>
       <div class="grp"><span class="gl">Farbe</span>
-        <button id="t-acid" type="button" class="hot" title="Farbe folgt der 303-Filterfahrt">Acid-Farbe</button>
-        <button id="t-bar" type="button" class="hot" title="Farbton springt auf jeder Takt-Eins ein Stück weiter: im Groove leicht, im Drop kräftig, im Break steht er">Takt-Farbe</button>
       </div>
       <div class="grp"><span class="gl">Hören</span>
-        <button id="t-auto" type="button" class="hot" title="Gleicht leise und laute Tracks für den Visualizer an (der Ton bleibt unverändert)">Auto-Pegel</button>
-        <button id="t-instr" type="button" class="hot" title="Die Presets bekommen Kick, Mitten (303, Synths, Claps) und Hi-Hats einzeln statt verschwommener Frequenzbereiche.">Instrumente hören</button>
-        <button id="t-tune" type="button" class="hot" title="Schwach reagierende Presets werden verstärkt, zu starke gedämpft (gilt ab dem nächsten Bildwechsel)">Reaktions-Angleich</button>
       </div>
       <div class="grp"><span class="gl">Anzeige</span>
-        <button id="t-name" type="button" class="hot" title="Name des laufenden Presets oben rechts, wenn die Leiste weg ist (für Screenshots)">Name oben rechts</button>
-        <button id="t-journal" type="button" class="hot" title="Schreibt unsichtbar mit, welches Visual zu welcher Musik lief und was du damit gemacht hast (Wischen, Stern, Halten). Bleibt nur im Browser, nichts wird gesendet.">Mitschreiben</button>
       </div>
       <div class="row">
         <label class="slider" for="gain">Reaktion<input id="gain" type="range" min="0.3" max="4" step="0.1" value="1"><output id="gainOut">1.0×</output></label>
@@ -155,7 +140,8 @@
 <!-- Programm in Teilen (Ordner js/). Reihenfolge ist wichtig: jeder Teil baut auf den vorherigen auf.
      B = Build-Nummer: bei jeder Änderung hochzählen, damit das Handy keine alten Teile aus dem Zwischenspeicher nimmt. Nur hier ändern. -->
 <script>
-["audio-reactive-controller.js","adaptive-preset-blender.js","acid-presets.js","acid-profile.js","acid-shader.js","js/analyse.js","js/01-grundlagen.js","js/02-instrumente.js","js/03-eigene-shader.js","js/04-bildschirm.js","js/05-presets-vermessen.js","js/06-mitschrift.js","js/07-sichern-laden.js","js/08-auswahl.js","js/09-schleife.js","js/10-bedienung.js","js/11-ton-sicherheit.js","js/12-erkennung.js","js/12b-mischpult.js","js/13-effekte-gesten.js","js/14-track-scan.js","js/15-tracks-mikro.js","js/16-start.js"].forEach(f=>{const s=document.createElement("script");s.src=f+"?b="+B;s.async=false;document.body.appendChild(s)});
+AM_FILES.forEach(f=>{const s=document.createElement("script");s.src=f+"?b="+B;s.async=false;document.body.appendChild(s)});
+if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js?b="+B).catch(()=>{}));
 </script>
 
 </body>

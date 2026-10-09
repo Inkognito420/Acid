@@ -82,8 +82,8 @@ function snapshot() {
   } catch (e) { return 'Status nicht lesbar: ' + e.message; }
 }
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD = 'Build 46 · Mischpult „Körper & Funken“: Federn im Takt, Funken-Konto, Sidechain, Ausholen vor dem Drop';
-const BUILD_NO = 46;
+const BUILD = 'Build 47 · Offline-Betrieb (Service Worker), Schalter-Tabelle, Prüfungen';
+const BUILD_NO = 47;
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);
@@ -196,7 +196,34 @@ let bpm = 140;
 const savedToggles = store.get('am-toggles', null);
 const reduceMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 // Build 37: so ist alles gedacht (Automatik). Werkstatt-Schalter weichen davon ab, „Alles auf Auto“ setzt zurück.
-const TOG_DEFAULT = { auto: true, mood: true, phrase: true, drop: true, build: true, pulse: !reduceMotion, spark: !reduceMotion, acid: true, bar: true, morph: true, tune: true, own: true, flug: false, name: true, instr: true, journal: true, mix: true };
+// Alle Schalter an EINER Stelle: [Name, Gruppe in der Werkstatt, Beschriftung (auch für die Automatik-Karte), Standard, Hinweistext].
+// Die Knöpfe t-<Name> entstehen daraus (index.html hat nur die leeren Gruppen).
+const TOGGLES = [
+  ["mood", "Bildwechsel", "Stimmungs-Presets", true, "Presets passend zu Klang, Abschnitt und Stimmung"],
+  ["phrase", "Bildwechsel", "Phrasen-Sync", true, "Wechsel auf Phrasen und Abschnitten im Takt"],
+  ["drop", "Bildwechsel", "Drop-Cut", true, "Harter Schnitt mit Blitz im Drop"],
+  ["own", "Bildwechsel", "Eigene Shader", true, "Ab und zu kommt einer der eigenen Shader (Peak Time, Driving, Acid) statt eines Milkdrop-Presets, passend zum Abschnitt"],
+  ["flug", "Bildwechsel", "Track-Flug bei Drops", false, "Zeigt automatisch den Track-Flug, wenn ein Drop naht (ab 12 Takten vorher bis 8 Takte danach). Nur bei gescannten Tracks."],
+  ["build", "Effekte", "Build-up", true, "Spannung vor dem Drop: Zoom, Vignette, Funken"],
+  ["pulse", "Effekte", "Kick-Puls", !reduceMotion, "Bild pumpt mit dem Kick"],
+  ["spark", "Effekte", "Hats & Snares", !reduceMotion, "Funken und Ringe auf Hi-Hats und Snares"],
+  ["morph", "Effekte", "Übergangs-Verformung", true, "Beim Bildwechsel verformt sich das Bild kurz mit dem Klang. Mit Mischpult: Drehen mit der 303, Schwanken im Takt, Stoß beim Bildwechsel"],
+  ["mix", "Effekte", "Mischpult", true, "Körper & Funken: Das Bild hängt an Federn, die auf das Tempo gestimmt sind. Funken kosten Energie aus einem Konto, vor dem Drop wird gespart. Aus = Effekte wie vor Build 46 (zum Vergleichen)"],
+  ["acid", "Farbe", "Acid-Farbe", true, "Farbe folgt der 303-Filterfahrt"],
+  ["bar", "Farbe", "Takt-Farbe", true, "Farbton springt auf jeder Takt-Eins ein Stück weiter: im Groove leicht, im Drop kräftig, im Break steht er"],
+  ["auto", "Hören", "Auto-Pegel", true, "Gleicht leise und laute Tracks für den Visualizer an (der Ton bleibt unverändert)"],
+  ["instr", "Hören", "Instrumente hören", true, "Die Presets bekommen Kick, Mitten (303, Synths, Claps) und Hi-Hats einzeln statt verschwommener Frequenzbereiche."],
+  ["tune", "Hören", "Reaktions-Angleich", true, "Schwach reagierende Presets werden verstärkt, zu starke gedämpft (gilt ab dem nächsten Bildwechsel)"],
+  ["name", "Anzeige", "Name oben rechts", true, "Name des laufenden Presets oben rechts, wenn die Leiste weg ist (für Screenshots)"],
+  ["journal", "Anzeige", "Mitschreiben", true, "Schreibt unsichtbar mit, welches Visual zu welcher Musik lief und was du damit gemacht hast (Wischen, Stern, Halten). Bleibt nur im Browser, nichts wird gesendet."]
+];
+const TOG_DEFAULT = {}, TOG_LABEL = {}, togIds = {};
+for (const [k, grp, label, def, tip] of TOGGLES) {
+  TOG_DEFAULT[k] = def; TOG_LABEL[k] = label; togIds[k] = "t-" + k;
+  const box = [...document.querySelectorAll("#werk .grp")].find(g => g.querySelector(".gl").textContent === grp);
+  const b = document.createElement("button"); b.id = "t-" + k; b.type = "button"; b.title = tip; b.textContent = label;
+  box.appendChild(b);
+}
 const toggles = Object.assign({}, TOG_DEFAULT, savedToggles || {});
 // Build 38: Track-Flug raus (Emmo: hat alles kaputt gemacht). Einmalig auch bei gespeicherten Schaltern ausschalten.
 if (!store.get('am-flug-off-38', false)) { toggles.flug = false; store.set('am-toggles', toggles); store.set('am-flug-off-38', true); }
