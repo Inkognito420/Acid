@@ -102,9 +102,10 @@ async function analyzeFile(file) {
 }
 function ensureScan(file) {
   if (!scanCache.has(file)) {
-    const p = scanChain.then(() => { scanBusyUntil = Infinity; return analyzeFile(file); }).catch(() => ({ skipped: 'fehler' })).then(r => { scanBusyUntil = performance.now() + 3000; return r; });
+    const p = scanChain.then(() => { scanBusyUntil = Infinity; return analyzeFile(file); }).catch(e => { err("Scan fehlgeschlagen: " + (e && e.message || e)); return { skipped: 'fehler' }; }).then(r => { scanBusyUntil = performance.now() + 3000; return r; });
     scanChain = p.then(() => {});
     scanCache.set(file, p);
+    while (scanCache.size > 12) scanCache.delete(scanCache.keys().next().value);   // älteste Scans fallen weg (Map merkt sich die Reihenfolge)
   }
   return scanCache.get(file);
 }

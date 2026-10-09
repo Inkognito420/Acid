@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#000000">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Azeret+Mono:wght@400;600&display=swap">
-<link rel="stylesheet" href="style.css?b=46">
+<script>var B=46;document.write('<link rel="stylesheet" href="style.css?b='+B+'">')</script>
 </head>
 <body>
 
@@ -152,31 +152,11 @@
 <script src="https://cdn.jsdelivr.net/npm/butterchurn@2.6.7/lib/butterchurn.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra.min.js"></script>
-<script src="audio-reactive-controller.js?b=46"></script>
-<script src="adaptive-preset-blender.js?b=46"></script>
-<script src="acid-presets.js?b=46"></script>
-<script src="acid-profile.js?b=46"></script>
-<script src="acid-shader.js?b=46"></script>
-<!-- Programm in Teilen (Ordner js/). Reihenfolge nicht ändern: jeder Teil baut auf den vorherigen auf.
-     ?b=Nummer sorgt dafür, dass das Handy nach einem Update keine alten Teile aus dem Zwischenspeicher nimmt. -->
-<script src="js/analyse.js?b=46"></script>
-<script src="js/01-grundlagen.js?b=46"></script>
-<script src="js/02-instrumente.js?b=46"></script>
-<script src="js/03-eigene-shader.js?b=46"></script>
-<script src="js/04-bildschirm.js?b=46"></script>
-<script src="js/05-presets-vermessen.js?b=46"></script>
-<script src="js/06-mitschrift.js?b=46"></script>
-<script src="js/07-sichern-laden.js?b=46"></script>
-<script src="js/08-auswahl.js?b=46"></script>
-<script src="js/09-schleife.js?b=46"></script>
-<script src="js/10-bedienung.js?b=46"></script>
-<script src="js/11-ton-sicherheit.js?b=46"></script>
-<script src="js/12-erkennung.js?b=46"></script>
-<script src="js/12b-mischpult.js?b=46"></script>
-<script src="js/13-effekte-gesten.js?b=46"></script>
-<script src="js/14-track-scan.js?b=46"></script>
-<script src="js/15-tracks-mikro.js?b=46"></script>
-<script src="js/16-start.js?b=46"></script>
+<!-- Programm in Teilen (Ordner js/). Reihenfolge ist wichtig: jeder Teil baut auf den vorherigen auf.
+     B = Build-Nummer: bei jeder Änderung hochzählen, damit das Handy keine alten Teile aus dem Zwischenspeicher nimmt. Nur hier ändern. -->
+<script>
+["audio-reactive-controller.js","adaptive-preset-blender.js","acid-presets.js","acid-profile.js","acid-shader.js","js/analyse.js","js/01-grundlagen.js","js/02-instrumente.js","js/03-eigene-shader.js","js/04-bildschirm.js","js/05-presets-vermessen.js","js/06-mitschrift.js","js/07-sichern-laden.js","js/08-auswahl.js","js/09-schleife.js","js/10-bedienung.js","js/11-ton-sicherheit.js","js/12-erkennung.js","js/12b-mischpult.js","js/13-effekte-gesten.js","js/14-track-scan.js","js/15-tracks-mikro.js","js/16-start.js"].forEach(f=>{const s=document.createElement("script");s.src=f+"?b="+B;s.async=false;document.body.appendChild(s)});
+</script>
 
 </body>
 </html>

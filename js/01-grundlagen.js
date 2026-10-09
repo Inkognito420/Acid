@@ -81,7 +81,6 @@ function snapshot() {
       + ' · Pegel im Analysator ' + level() + ' · ' + agcText() + (bufState && bufState.buf ? ' · SICHERHEITS-MODUS' : '') + ' · Track ' + (curFile ? curFile.name : '–') + ' · Erkennung ' + (curAnalysis ? 'Scan' : 'live');
   } catch (e) { return 'Status nicht lesbar: ' + e.message; }
 }
-const $$ = id => document.getElementById(id);
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
 const BUILD = 'Build 46 · Mischpult „Körper & Funken“: Federn im Takt, Funken-Konto, Sidechain, Ausholen vor dem Drop';
 const BUILD_NO = 46;
@@ -133,7 +132,7 @@ function makeWav(sec, freq, amp) {
   for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.round(Math.sin(2 * Math.PI * freq * i / rate) * amp * 32767), true);
   return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
 }
-$$('beepA').addEventListener('click', async () => {
+$('beepA').addEventListener('click', async () => {
   trg('Testton 1 (über die Audio-Engine, so wie der Track)');
   try {
     await ctx.resume();
@@ -142,7 +141,7 @@ $$('beepA').addEventListener('click', async () => {
     rea('Ton gesendet, Engine ' + ctx.state); erg('Hörst du den Ton? Ja/Nein merken');
   } catch (e) { err('Testton 1: ' + e.message); }
 });
-$$('beepB').addEventListener('click', async () => {
+$('beepB').addEventListener('click', async () => {
   trg('Testton 2 (über den normalen Player, ohne Audio-Engine)');
   try { const a = new Audio(makeWav(0.6, 660, 0.4)); await a.play(); rea('Player-Ton gestartet'); erg('Hörst du den Ton? Ja/Nein merken'); }
   catch (e) { err('Testton 2: ' + e.message); }
@@ -170,16 +169,16 @@ audio.addEventListener('playing', () => { wantPlay = true; resumeTries = 0; star
 audio.addEventListener('pause', () => { setTimeout(() => resumeIfCut('Pause ohne Tipp'), 200); });
 
 // Bedienung des Protokoll-Fensters
-$$('logBtn').addEventListener('click', () => {
-  const open = $$('logbox').hidden; $$('logbox').hidden = !open; $$('logBtn').setAttribute('aria-expanded', String(open)); $$('logBtn').classList.toggle('hot', open);
+$('logBtn').addEventListener('click', () => {
+  const open = $('logbox').hidden; $('logbox').hidden = !open; $('logBtn').setAttribute('aria-expanded', String(open)); $('logBtn').classList.toggle('hot', open);
   if (open) { erg(snapshot()); }
 });
-$$('logSnap').addEventListener('click', () => erg(snapshot()));
-$$('logClear').addEventListener('click', () => { LOG.length = 0; renderLog(); });
-$$('logCopy').addEventListener('click', () => {
+$('logSnap').addEventListener('click', () => erg(snapshot()));
+$('logClear').addEventListener('click', () => { LOG.length = 0; renderLog(); });
+$('logCopy').addEventListener('click', () => {
   const txt = 'Acid Milkdrop Protokoll\n' + logText();
-  const ok = () => { $$('logCopy').textContent = 'Kopiert'; setTimeout(() => { $$('logCopy').textContent = 'Kopieren'; }, 2000); };
-  const sel = () => { const r = document.createRange(); r.selectNodeContents($$('logpre')); const se = getSelection(); se.removeAllRanges(); se.addRange(r); say('Protokoll markiert. Tippe „Kopieren“ im Menü.'); };
+  const ok = () => { $('logCopy').textContent = 'Kopiert'; setTimeout(() => { $('logCopy').textContent = 'Kopieren'; }, 2000); };
+  const sel = () => { const r = document.createRange(); r.selectNodeContents($('logpre')); const se = getSelection(); se.removeAllRanges(); se.addRange(r); say('Protokoll markiert. Tippe „Kopieren“ im Menü.'); };
   try { navigator.clipboard.writeText(txt).then(ok, sel); } catch (e) { sel(); }
 });
 
