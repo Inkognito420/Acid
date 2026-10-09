@@ -51,6 +51,8 @@ function applyScanFor(f) {
       curAnalysis = A; jrScan(f, A);
       if (A.grid) setBpm(A.bpm, true);
       erg('Scan fertig: ' + (A.grid ? A.bpm.toFixed(2) + ' BPM, ' + A.drops + ' Drops' : 'kein festes Raster'));
+      if (A.klang) erg('Klangbild (Schläge und Töne getrennt, ' + A.klangMs + ' ms): ' + klangSummary(A));
+      else if (A.klangErr) err('Klangbild fehlgeschlagen: ' + A.klangErr);
       setTrackInfo(A.grid ? A.drops + (A.drops === 1 ? ' Drop' : ' Drops') : 'kein festes Raster, läuft live');
       $('mood').textContent = 'Stimmung: ' + moodText(A.mood) + ' · ' + (A.grid ? A.bpm.toFixed(1) + ' BPM' : 'ohne festes Tempo');
       drawTimeline(A);

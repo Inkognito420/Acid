@@ -83,8 +83,8 @@ function snapshot() {
 }
 const $$ = id => document.getElementById(id);
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD = 'Build 40 · Code in Teilen (js/), Verhalten gleich';
-const BUILD_NO = 40;
+const BUILD = 'Build 41 · Schläge und Töne getrennt (Klangbild aus dem Scan)';
+const BUILD_NO = 41;
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);

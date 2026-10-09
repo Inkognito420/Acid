@@ -61,7 +61,18 @@ function randomUsable() {
   return names.find(usable) || names[0];
 }
 // Ziel-Klangbild [Bass, Mitten, Höhen]: was gerade zu hören ist, plus was der Abschnitt gleich bringt
+// Build 41: Mit Scan kommt das Klangbild aus dem Track selbst (Schläge und Töne getrennt, pro Takt), aktueller Takt
+// plus die nächsten 3. Die Live-Werte waren im Groove fast immer 33/33/33 (Zähler liefen voll).
+function scanKlang() {
+  const A = curAnalysis, K = A && A.klang; if (!K || !scanActive()) return null;
+  const ts = audio.currentTime - (+latEl.value) / 1000, j0 = Math.floor((ts - K.t0) / K.barS);
+  const v = [0, 0, 0]; let n = 0;
+  for (let j = Math.max(0, j0); j <= j0 + 3 && j < K.n; j++) { const o = j * 3; if (K.share[o] + K.share[o + 1] + K.share[o + 2] < 0.5) continue; v[0] += K.share[o]; v[1] += K.share[o + 1]; v[2] += K.share[o + 2]; n++; }
+  return n ? v.map(x => x / n) : null;
+}
 function soundTarget() {
+  const sk = scanKlang();
+  if (sk) { if (sectionKey() === 'drop') { sk[0] += 0.3; const s = sk[0] + sk[1] + sk[2]; return sk.map(x => x / s); } return sk; }
   const v = [snd.kN || 0, snd.acid || 0, snd.hN || 0];
   const sec = sectionKey();
   if (sec === 'drop') v[0] += 0.6;
@@ -126,7 +137,7 @@ function pickPreset(tg) {
 function fitText(v, n) {
   const R = REACT[n]; if (!v || !R) return '';
   const S = R[0] + R[1] + R[2] + 1e-9, p = x => Math.round(x * 100);
-  return ' · Klang Kick ' + p(v[0]) + ' / Acid ' + p(v[1]) + ' / Hats ' + p(v[2]) + ' % → Preset Bass ' + p(R[0] / S) + ' / Mitten ' + p(R[1] / S) + ' / Höhen ' + p(R[2] / S) + ' %';
+  return ' · Klang' + (scanKlang() ? ' (Scan)' : '') + ' Kick ' + p(v[0]) + ' / ' + (scanKlang() ? 'Töne ' : 'Acid ') + p(v[1]) + ' / Hats ' + p(v[2]) + ' % → Preset Bass ' + p(R[0] / S) + ' / Mitten ' + p(R[1] / S) + ' / Höhen ' + p(R[2] / S) + ' %';
 }
 function trackMood() {
   if (curAnalysis && curAnalysis.mood) return curAnalysis.mood;

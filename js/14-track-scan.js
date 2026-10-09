@@ -33,6 +33,9 @@ async function analyzeFile(file) {
   const SUB = 4;                                     // Bassband zusätzlich 4x feiner (ca. 6 ms) für genaues Tempo
   const env = { lowF: new Float32Array(total * SUB), low: new Float32Array(total), m1: new Float32Array(total), m2: new Float32Array(total), hi: new Float32Array(total), full: new Float32Array(total) };
   const keys = ['low', 'm1', 'm2', 'hi', 'full'];
+  // Build 41: Klangbild für „Schläge und Töne trennen“ (64 Bänder pro Bild, siehe js/analyse.js)
+  let KL = null, KM = null;
+  try { KL = klangSetup(SR); KM = new Float32Array(total * KL.NB); } catch (e) { KL = null; }
   for (let f0 = 0; f0 < total; f0 += segFrames) {
     const frames = Math.min(segFrames, total - f0);
     const off = new OAC(5, frames * hop, SR);
@@ -64,10 +67,15 @@ async function analyzeFile(file) {
         }
       }
     }
-    report(Math.min(0.95, (f0 + frames) / total));
+    if (KL) { const d4 = r.getChannelData(4); for (let f = 0; f < frames; f++) klangFrame(KL, d4, f * hop, KM, (f0 + f) * KL.NB); }
+    report(Math.min(0.9, (f0 + frames) / total));
     await tick();
   }
   const A = analyzeEnvelopes(env, hop / SR);
+  if (KL && A.grid) {
+    try { const k0 = performance.now(); A.klang = klangBars(A, await klangSplit(KM, total, KL.fc, tick), hop / SR); A.klangMs = Math.round(performance.now() - k0); }
+    catch (e) { A.klang = null; A.klangErr = String(e && e.message || e); }
+  }
   A.file = file;
   return A;
 }

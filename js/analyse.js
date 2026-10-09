@@ -238,3 +238,103 @@ function analyzeEnvelopes(env, hopS) {
   }
   return { grid, bpm, beatS, beat0: phase * hopS, barPhase, sections, mood, drops, duration: N * hopS, onM, onH, kA, fp };
 }
+
+// ===== Schläge und Töne trennen (Build 41) =====
+// Nach FitzGerald 2010 „Harmonic/Percussive Separation using Median Filtering“ (DAFx):
+// Im Klangbild sind Schläge (Kick, Hats, Claps) kurze senkrechte Striche (kurz, alle Höhen), Töne (303, Synths, Pads)
+// lange waagrechte Striche (bleiben auf einer Höhe). Median über die Zeit behält die Töne, Median über die Höhen die
+// Schläge. Daraus pro Takt: wie stark Kick (Schlag unter 100 Hz), Töne (150–3000 Hz) und Hats (Schlag ab 6 kHz) sind.
+const KLANG_FFT = 1024, KLANG_NB = 64, KLANG_F0 = 40, KLANG_F1 = 10000;
+function klangSetup(SR) {
+  const N = KLANG_FFT, win = new Float32Array(N), cos = new Float32Array(N / 2), sin = new Float32Array(N / 2), rev = new Uint16Array(N);
+  for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N);
+  for (let i = 0; i < N / 2; i++) { cos[i] = Math.cos(-2 * Math.PI * i / N); sin[i] = Math.sin(-2 * Math.PI * i / N); }
+  for (let i = 0, bits = Math.log2(N); i < N; i++) { let r = 0; for (let b = 0; b < bits; b++) r |= ((i >> b) & 1) << (bits - 1 - b); rev[i] = r; }
+  // Bänder 40 Hz … 10 kHz: unten jedes FFT-Fach ein eigenes Band (sonst blieben tiefe Bänder leer), oben je 10 % breiter
+  const binHz = SR / N, top = Math.min(KLANG_F1, SR / 2 * 0.95), edges = [KLANG_F0];
+  while (edges[edges.length - 1] < top && edges.length <= KLANG_NB) edges.push(Math.max(edges[edges.length - 1] * 1.1, edges[edges.length - 1] + binHz));
+  const NB = edges.length - 1, bandOf = new Int16Array(N / 2).fill(-1), fc = new Float32Array(NB);
+  for (let k = 1; k < N / 2; k++) { const f = k * binHz; for (let b = 0; b < NB; b++) if (f >= edges[b] && f < edges[b + 1]) { bandOf[k] = b; break; } }
+  for (let b = 0; b < NB; b++) fc[b] = Math.sqrt(edges[b] * edges[b + 1]);
+  return { N, NB, win, cos, sin, rev, bandOf, fc, re: new Float32Array(N), im: new Float32Array(N) };
+}
+// Ein Bild: Ausschnitt ab pos (fehlende Proben = 0), Stärke pro Band in out[o..o+NB)
+function klangFrame(K, d, pos, out, o) {
+  const N = K.N, re = K.re, im = K.im;
+  for (let i = 0; i < N; i++) { const j = K.rev[i], p = pos + j; re[i] = p < d.length ? d[p] * K.win[j] : 0; im[i] = 0; }
+  for (let size = 2; size <= N; size <<= 1) {
+    const half = size >> 1, step = N / size;
+    for (let s = 0; s < N; s += size) for (let k = 0; k < half; k++) {
+      const c = K.cos[k * step], sn = K.sin[k * step], a = s + k, b = a + half;
+      const tr = re[b] * c - im[b] * sn, ti = re[b] * sn + im[b] * c;
+      re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+    }
+  }
+  const NB = K.NB;
+  for (let b = 0; b < NB; b++) out[o + b] = 0;
+  for (let k = 1; k < N / 2; k++) { const b = K.bandOf[k]; if (b >= 0) out[o + b] += re[k] * re[k] + im[k] * im[k]; }
+  for (let b = 0; b < NB; b++) out[o + b] = Math.sqrt(out[o + b]);
+}
+function median(a, n) {                 // a wird sortiert (Einfügen, n ist klein)
+  for (let i = 1; i < n; i++) { const v = a[i]; let j = i - 1; while (j >= 0 && a[j] > v) { a[j + 1] = a[j]; j--; } a[j + 1] = v; }
+  return a[n >> 1];
+}
+// M: Stärke pro Bild und Band (T x NB). Ergebnis pro Bild: Kick (Schlag tief), Töne (150–3000 Hz), Hats (Schlag hoch)
+async function klangSplit(M, T, fc, tick) {
+  const NB = fc.length, LT = 8, LF = 4, buf = new Float32Array(2 * LT + 1);
+  const kick = new Float32Array(T), ton = new Float32Array(T), hat = new Float32Array(T);
+  const bK = [], bT = [], bH = [];
+  for (let b = 0; b < NB; b++) { if (fc[b] < 100) bK.push(b); if (fc[b] >= 150 && fc[b] <= 3000) bT.push(b); if (fc[b] >= 6000) bH.push(b); }
+  const isK = new Uint8Array(NB), isT = new Uint8Array(NB), isH = new Uint8Array(NB);
+  bK.forEach(b => isK[b] = 1); bT.forEach(b => isT[b] = 1); bH.forEach(b => isH[b] = 1);
+  const H = new Float32Array(NB);
+  for (let t = 0; t < T; t++) {
+    const o = t * NB;
+    for (let b = 0; b < NB; b++) {                                   // Töne: Median über die Zeit
+      let n = 0; for (let k = -LT; k <= LT; k++) { const tt = t + k; buf[n++] = M[(tt < 0 ? 0 : tt >= T ? T - 1 : tt) * NB + b]; }
+      H[b] = median(buf, n);
+    }
+    let sk = 0, st = 0, sh = 0;
+    for (let b = 0; b < NB; b++) {                                   // Schläge: Median über die Höhen
+      let n = 0; for (let k = -LF; k <= LF; k++) { const bb = b + k; if (bb >= 0 && bb < NB) buf[n++] = M[o + bb]; }
+      const P = median(buf, n), m = M[o + b], h2 = H[b] * H[b], p2 = P * P, den = h2 + p2 + 1e-12, e = m * m;
+      if (isK[b]) sk += e * p2 / den;
+      if (isT[b]) st += e * h2 / den;
+      if (isH[b]) sh += e * p2 / den;
+    }
+    kick[t] = Math.sqrt(sk); ton[t] = Math.sqrt(st); hat[t] = Math.sqrt(sh);
+    if (tick && (t & 2047) === 2047) await tick();
+  }
+  return { kick, ton, hat };
+}
+// Pro Takt: Anteile Kick / Töne / Hats (je Kanal auf den eigenen 90-%-Wert des Tracks bezogen, quadriert, dann Anteile 0..1)
+function klangBars(A, S, hopS) {
+  if (!A || !A.grid || !S) return null;
+  const T = S.kick.length, barS = 4 * A.beatS, t0 = A.beat0 + A.barPhase * A.beatS;
+  const nBars = Math.max(1, Math.ceil((T * hopS - t0) / barS));
+  const raw = [new Float32Array(nBars), new Float32Array(nBars), new Float32Array(nBars)], cnt = new Float32Array(nBars);
+  for (let t = 0; t < T; t++) {
+    const j = Math.floor((t * hopS - t0) / barS); if (j < 0 || j >= nBars) continue;
+    raw[0][j] += S.kick[t]; raw[1][j] += S.ton[t]; raw[2][j] += S.hat[t]; cnt[j]++;
+  }
+  for (const r of raw) for (let j = 0; j < nBars; j++) r[j] /= Math.max(1, cnt[j]);
+  const p90 = r => { const s = Array.from(r).filter(x => x > 0).sort((a, b) => a - b); return s.length ? s[Math.floor(s.length * 0.9)] : 1; };
+  const ref = raw.map(p90), share = new Float32Array(nBars * 3);
+  for (let j = 0; j < nBars; j++) {
+    if (raw[0][j] + raw[1][j] + raw[2][j] < 1e-6) continue;           // Stille
+    const v = raw.map((r, c) => { const x = Math.min(1.5, r[j] / (ref[c] + 1e-9)); return x * x; }), sum = v[0] + v[1] + v[2];   // quadriert: mehr Unterschied zwischen den Teilen
+    for (let c = 0; c < 3; c++) share[j * 3 + c] = sum > 0.05 ? v[c] / sum : 0;
+  }
+  return { t0, barS, n: nBars, share };
+}
+// Für das Protokoll: mittlere Anteile je Abschnittsart, z. B. „Groove Kick 41 / Töne 33 / Hats 26 % · Break …“
+function klangSummary(A) {
+  const K = A.klang; if (!K) return '';
+  const acc = {}, NAME = { intro: 'Intro', groove: 'Groove', break: 'Break', buildup: 'Aufbau', drop: 'Drop', outro: 'Outro' };
+  for (let j = 0; j < K.n; j++) {
+    const o = j * 3, sum = K.share[o] + K.share[o + 1] + K.share[o + 2]; if (sum < 0.5) continue;
+    const tm = K.t0 + (j + 0.5) * K.barS, s = (A.sections || []).find(x => tm >= x.t0 && tm < x.t1); const k = s ? s.type : 'groove';
+    const a = acc[k] || (acc[k] = [0, 0, 0, 0]); a[0] += K.share[o]; a[1] += K.share[o + 1]; a[2] += K.share[o + 2]; a[3]++;
+  }
+  return Object.keys(acc).map(k => { const a = acc[k], p = x => Math.round(100 * x / a[3]); return (NAME[k] || k) + ' Kick ' + p(a[0]) + ' / Töne ' + p(a[1]) + ' / Hats ' + p(a[2]) + ' %'; }).join(' · ');
+}
