@@ -83,8 +83,8 @@ function snapshot() {
 }
 const $$ = id => document.getElementById(id);
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD = 'Build 41 · Schläge und Töne getrennt (Klangbild aus dem Scan)';
-const BUILD_NO = 41;
+const BUILD = 'Build 42 · Kick auch im Intro, Break und Outro';
+const BUILD_NO = 42;
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);

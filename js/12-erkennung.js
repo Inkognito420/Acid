@@ -204,10 +204,14 @@ function scanFrame(t) {
   if (bi !== lastBi) {
     const prevBi = lastBi; lastBi = bi;
     // Kick-Puls auf dem Raster: kommt pünktlich auf dem Schlag, nicht erst nach der Erkennung
-    if (prevBi !== null && bi === prevBi + 1 && (type === 'groove' || type === 'drop' || type === 'buildup') && !audio.paused) {
+    // Build 42: auch in Intro, Break und Outro, wenn dort wirklich ein Kick läuft (gemessene Stärke kA). Vorher reagierte
+    // das Bild z. B. bei Lutgens – Resonance (Intro mit Kick, 111 s) fast zwei Minuten gar nicht auf den Kick.
+    const kaHere = A.kA && bi >= 0 && bi < A.kA.length ? A.kA[bi] : null;
+    const mainSec = type === 'groove' || type === 'drop' || type === 'buildup';
+    if (prevBi !== null && bi === prevBi + 1 && (mainSec || (kaHere !== null && kaHere >= 0.35)) && !audio.paused) {
       const sinceDrop = type === 'drop' ? 1 : 0;
-      kickGlow = 1; pulse = Math.max(pulse, type === 'drop' ? 0.05 : type === 'buildup' ? 0.02 + 0.03 * build : 0.035);
-      { const ka = A.kA && bi >= 0 && bi < A.kA.length ? A.kA[bi] : 1; if (ka >= 0.35) AMI.hk = Math.max(AMI.hk, 0.5 + 0.5 * ka); }   // Instrumente hören: nur echte Kicks, mit gemessener Stärke
+      kickGlow = 1; pulse = Math.max(pulse, type === 'drop' ? 0.05 : type === 'buildup' ? 0.02 + 0.03 * build : mainSec ? 0.035 : 0.025);
+      { const ka = kaHere === null ? 1 : kaHere; if (ka >= 0.35) AMI.hk = Math.max(AMI.hk, 0.5 + 0.5 * ka); }   // Instrumente hören: nur echte Kicks, mit gemessener Stärke
       if (beat.n % 4 === 0) { pulse += 0.01 * (1 + sinceDrop); onBar(type); }   // Takt-Eins etwas stärker, Farbe springt weiter
     }
     if (prevBi !== null && bi === prevBi + 1 && auto && !frozen && toggles.phrase && (type === 'groove' || type === 'drop')) {
