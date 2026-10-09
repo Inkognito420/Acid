@@ -27,6 +27,7 @@ Eigene Tracks laden, Takt und Abschnitte werden vorab erkannt (Scan), Milkdrop
 - `acid-shader.js` - eigene Shader (WebGL) und der Player dafuer
 - `acid-profile.js`, `acid-presets.js` - vermessene Milkdrop-Presets, eigene Presets
 - `adaptive-preset-blender.js`, `audio-reactive-controller.js` - Presets mischen, Reaktion
+- `b33/` - Vergleichsseite: Stand von Build 33 unveraendert (nur Titel), zum Gegenhoeren unter `/Acid/b33/`. Hat eigene Kopien aller Dateien und gehoert nicht zum Programm.
 - `shader-test.html` - Testseite fuer die eigenen Shader (Messlauf)
 - `acid-bild-*.jpg` - Bilder fuer die Bild-Presets
 
