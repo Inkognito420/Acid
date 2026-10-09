@@ -69,9 +69,12 @@ audio.addEventListener('ended', () => { setPlayLabel(); if (qi < queue.length - 
 audio.addEventListener('error', () => say('Diese Datei kann das iPhone nicht abspielen. Nimm MP3, AAC/M4A oder WAV.'));
 audio.addEventListener('loadedmetadata', () => { if (curAnalysis) drawTimeline(curAnalysis); });
 $('play').addEventListener('click', async () => {
+  // Build 49: Die Absicht gilt beim Tippen. Auf dem iPhone hängt ctx.resume() bis zum ersten Tipp; das wartende playAt startet den Track dann schon vor
+  // diesem Handler, der ihn sonst sofort wieder pausiert hätte (Protokoll: "Player: spielt", "Player: pause", dann Neustart durch den Wächter).
+  const wollteStarten = audio.paused;
   try { await ctx.resume(); } catch (e) {}
   if (micOn) { stopMic(); if (audio.src) { connect(fileNode); } }
-  if (audio.paused) { try { await audio.play(); say(''); } catch (e) { say('Abspielen blockiert. Tippe nochmal auf Play.'); } }
+  if (wollteStarten) { if (audio.paused) { try { await audio.play(); say(''); } catch (e) { say('Abspielen blockiert. Tippe nochmal auf Play.'); } } }
   else audio.pause();
 });
 $('nextTrack').addEventListener('click', () => playAt(qi + 1));
@@ -146,6 +149,7 @@ function addTracks(files) {
   if (!tracks.length) { say('Keine Audiodatei dabei. Nimm MP3, M4A, WAV oder AIFF.'); return; }
   const wasIdle = qi < 0 || (audio.ended && qi >= queue.length - 1);
   const start = queue.length;
+  rea(tracks.length + (tracks.length === 1 ? ' Track' : ' Tracks') + ' hinzugefügt (' + (wasIdle ? 'startet sofort' : 'kommt in die Liste') + ')');   // auch fürs Ablegen aus der Dateien-App
   queue.push(...tracks);
   if (wasIdle) playAt(start);
   else {

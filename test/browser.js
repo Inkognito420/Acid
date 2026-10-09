@@ -223,6 +223,45 @@ const SZ = {
        JSON.stringify(r) + errs.join(' | ') + ' 404: ' + misses.join(','));
     await close();
   },
+  async protokollfixes() {
+    // Vier Fehler aus dem iPhone-Protokoll von Build 48
+    const { page, close } = await open();
+    await page.setInputFiles('#fileIn', [T[0]]);
+    await page.waitForFunction(() => curAnalysis && curAnalysis.beatS, null, { timeout: 120000, polling: 200 });
+    const wait = ms => page.waitForTimeout(ms);
+    // 1) Lastbremse: Zähler für langsame Sekunden darf Hintergrund und Rückkehr nicht überleben
+    const lb = await page.evaluate(async () => {
+      const w = ms => new Promise(r => setTimeout(r, ms)), vis = v => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => v }); document.dispatchEvent(new Event('visibilitychange')); };
+      const vorher = LOG.filter(l => /Lastbremse/.test(l.x)).length;   // echte Langsamkeit des Test-Rechners (Software-GL) zählt nicht
+      slowSecs = 2; vis('hidden'); await w(300); const nachHidden = slowSecs; slowSecs = 2; vis('visible'); await w(1500);
+      return { nachHidden, nachVisible: slowSecs, lastbremse: LOG.filter(l => /Lastbremse/.test(l.x)).length - vorher };
+    });
+    check('Lastbremse: Zähler wird beim Verstecken und bei der Rückkehr geleert, keine Fehlauslösung', lb.nachHidden === 0 && lb.nachVisible === 0 && lb.lastbremse === 0, JSON.stringify(lb));
+    // 2) Play-Tipp: ein wartendes playAt startet den Track vor dem Handler; der darf ihn nicht wieder pausieren
+    const pl = await page.evaluate(async () => {
+      const w = ms => new Promise(r => setTimeout(r, ms)); audio.pause(); await w(100);
+      const orig = ctx.resume.bind(ctx); let go, pausen = 0; ctx.resume = () => new Promise(r => { go = () => r(orig()); });
+      $('play').click(); await w(50); await audio.play(); await w(100);
+      audio.addEventListener('pause', () => pausen++); go(); await w(600); ctx.resume = orig;   // der Wächter würde eine Pause nach 0,2 s zurücknehmen: darum zählen wir die Pause selbst
+      return { spielt: !audio.paused, pausenNachDemTipp: pausen };
+    });
+    check('Play-Tipp: ein schon gestarteter Track wird nicht sofort wieder pausiert', pl.spielt && pl.pausenNachDemTipp === 0, JSON.stringify(pl));
+    // 3) Sicherheitsnetz gegen Stillstand: in Groove und Drop wechselt der Phrasen-Sync, kein zweiter Wechsel
+    const sc = await page.evaluate(() => {
+      let n = 0; const orig = nextPreset; window.nextPreset = function () { n++; };
+      const P = 60000 / bpm, t = performance.now(), res = {}; auto = true; frozen = false; dropPre = 0;
+      for (const [ph, ty] of [[true, 'groove'], [true, 'drop'], [true, 'break'], [true, 'intro'], [false, 'groove']]) { toggles.phrase = ph; lastSwitch = t - 1e6; n = 0; stillCheck(ty, t, P); res[ty + (ph ? '' : '(Phrase aus)')] = n; }
+      window.nextPreset = orig; toggles.phrase = true; return res;
+    });
+    check('Stillstands-Netz: nicht in Groove und Drop (Phrasen-Sync an), sonst schon', sc.groove === 0 && sc.drop === 0 && sc.break === 1 && sc.intro === 1 && sc['groove(Phrase aus)'] === 1, JSON.stringify(sc));
+    // 4) Protokoll: Kopf bleibt, Lücke wird markiert, Obergrenze gilt
+    const lg = await page.evaluate(() => {
+      for (let i = 0; i < 700; i++) rea('Füllzeile ' + i);
+      return { n: LOG.length, kopf: LOG[0].x.slice(0, 20), luecke: LOG.some(l => l.gap), text: /Zeilen ausgelassen/.test(logText()), letzte: LOG[LOG.length - 1].x };
+    });
+    check('Protokoll: Obergrenze 400, die ersten Zeilen (Build, Start) bleiben, Lücke ist markiert', lg.n === 400 && /Seite geladen/.test(lg.kopf) && lg.luecke && lg.text && lg.letzte === 'Füllzeile 699', JSON.stringify(lg));
+    await close();
+  },
   async manifest() {
     const m = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.webmanifest'), 'utf8'));
     const miss = m.icons.map(i => i.src).concat(['icon-180.png']).filter(f => !fs.existsSync(path.join(ROOT, f)));
