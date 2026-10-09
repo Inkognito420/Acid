@@ -1,6 +1,6 @@
 /* ============================================================
    Acid Milkdrop: eigene Shader
-   Stand: 09.10.2026 (Build 48; der Track-Flug von Build 36 ist entfernt, Stand davor: Tag stand-build46)
+   Stand: 09.10.2026 (Build 48; der Track-Flug von Build 36 ist entfernt, Stand davor: Commit e3a8885, Build 46)
 
    Was ist das?
    Sieben selbst geschriebene Bild-Effekte (Fragment-Shader), je zwei pro Stil

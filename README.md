@@ -59,7 +59,7 @@ dabei gleich, die Hoehen-Messwerte (Helligkeit, Filter) verschieben sich. Das Pr
 ## Track-Flug (Build 36 bis 47, entfernt in Build 48)
 
 Der Track-Flug (Tunnel durch den gescannten Track) war seit Build 38 aus und ist entfernt. Wer ihn zurueckhaben will:
-`git checkout stand-build46` (Tag), Shader `flug-track` in `acid-shader.js`, Teil 3 und die Verweise in 08, 10, 12, 15.
+`git checkout e3a8885` (letzter Stand mit Track-Flug, Build 46), Shader `flug-track` in `acid-shader.js`, Teil 3 und die Verweise in 08, 10, 12, 15.
 
 ## Klangmesser (ab Build 43)
 
