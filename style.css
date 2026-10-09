@@ -30,6 +30,10 @@ button,select{font:600 12px var(--mono);color:var(--fg);background:rgba(255,255,
 button:disabled{opacity:.4}
 button:focus-visible,select:focus-visible{outline:2px solid var(--acid);outline-offset:2px}
 button.hot{background:var(--acid);color:#111;border-color:var(--acid)}
+button.warn{background:#7a1f1f;border-color:#c0392b;color:#fff}
+#panicBox{position:fixed;inset:0;z-index:50;background:#000;display:grid;place-items:center;text-align:center;padding:24px}
+#panicBox h1{font-family:var(--display);font-weight:800;font-size:clamp(28px,8vw,56px);margin:0 0 12px;color:#ff6b6b}
+#panicBox p{margin:0 0 20px;color:var(--dim);font-size:14px}
 .stat{font-size:11px;color:var(--dim);letter-spacing:.06em;text-transform:uppercase;font-variant-numeric:tabular-nums}
 .stat em{font-style:normal;color:var(--fg)}
 #preset,#track{font-size:11px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}

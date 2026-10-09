@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Azeret+Mono:wght@400;600&display=swap">
-<script>var B=49;document.write('<link rel="stylesheet" href="style.css?b='+B+'"><script src="app-files.js?b='+B+'"><\/script>')</script>
+<script>var B=50;document.write('<link rel="stylesheet" href="style.css?b='+B+'"><script src="app-files.js?b='+B+'"><\/script>')</script>
 </head>
 <body>
 
@@ -20,6 +20,7 @@
 <canvas id="fx"></canvas>
 <div id="intro"><div><h1>ACID<br><span>MILKDROP</span></h1><p>Tracks aus der Dateien-App aufs Bild ziehen, gern mehrere auf einmal. Wischen: nächstes Preset · Halten: Freeze · Doppeltipp: Schnitt mit Blitz · Tippen: Leiste aus und an.</p></div></div>
 
+<div id="panicBox" hidden><div><h1>GESTOPPT</h1><p>Ton, Mikrofon, Bildschirmsperre und Grafik sind aus.</p><button id="panicReload" type="button" class="hot">Neu laden</button></div></div>
 <div id="flash"></div>
 <div id="pname"></div>
 <div id="drop" hidden>Tracks hier loslassen</div>
@@ -36,6 +37,7 @@
     <button id="addBtn" type="button" class="hot" aria-label="Tracks aus Dateien hinzufügen">＋ Tracks</button>
     <input id="fileIn" type="file" multiple accept="audio/*,.mp3,.m4a,.aac,.wav,.aif,.aiff,.flac,.caf,.ogg,.opus" hidden>
     <button id="play" type="button" disabled>Play</button>
+    <button id="panic" type="button" class="warn" aria-label="Notaus: alles sofort stoppen" title="Notaus: Ton, Mikrofon und Grafik sofort aus. Geht auch mit drei Fingern gleichzeitig aufs Bild tippen.">■ Stopp</button>
     <button id="micBtn" type="button" aria-pressed="false" title="Auf den Ton aus der Umgebung reagieren (Mikrofon)">🎤 Mikro</button>
     <button id="nextTrack" type="button" disabled aria-label="Nächster Track">⏭</button>
     <select id="quality" aria-label="Auflösung" hidden>
@@ -101,6 +103,7 @@
       <div class="row">
         <button id="logSnap" type="button">Status jetzt</button>
         <button id="logCopy" type="button">Kopieren</button>
+        <button id="logPrev" type="button" title="Die letzten Zeilen vom vorigen Start (auch nach einem Hänger)">Letzter Lauf</button>
         <button id="logClear" type="button">Leeren</button>
       </div>
     </div>
