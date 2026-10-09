@@ -563,8 +563,8 @@ function analyzeEnvelopes(env, hopS) {
   }
   const $$ = id => document.getElementById(id);
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  const BUILD = 'Build 38 · Track-Flug raus';
-  const BUILD_NO = 38;
+  const BUILD = 'Build 39 · Kein Stillstand mehr';
+  const BUILD_NO = 39;
   trg('Seite geladen · ' + BUILD);
   rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
   erg(navigator.userAgent);
@@ -1975,7 +1975,7 @@ function analyzeEnvelopes(env, hopS) {
     // Lange nicht gelaufen (Scan-Modus, Pause, Track-Ende, Seite im Hintergrund): verpasste Schläge nicht auf einmal nachholen
     // (vorher: bei einer Pause nach 6 Minuten rund 200 Takte in einem Bild, Farbe sprang wild)
     if (t - beat.t > 6 * P) { const skip = Math.floor((t - beat.t) / P) - 1; beat.t += skip * P; beat.n += skip; }
-    while (t - beat.t >= P) { beat.t += P; beat.n++; liveTicks++; if (beat.n % 4 === 0) onBar(beat.state); onBeat(t, P); }
+    while (t - beat.t >= P) { beat.t += P; beat.n++; liveTicks++; if (beat.n % 4 === 0) { onBar(beat.state); stillCheck(beat.state, t, P); } onBeat(t, P); }
     const sinceKick = t - beat.lastKick;
     if (beat.state === 'groove' && sinceKick > 8 * P) { beat.breakStart = beat.lastKick; beat.kickStreak = 0; hiAtBreak = hiFast; setLiveState('break', t, P); }
     if (beat.state === 'break' && t - beat.breakStart > 16 * P && hiAtBreak > 0 && hiFast > hiAtBreak * 1.5) { buildStart = t; setLiveState('buildup', t, P); }
@@ -2019,6 +2019,20 @@ function analyzeEnvelopes(env, hopS) {
     if (!(beat.state === 'groove' || beat.state === 'drop')) return;
     const since = beat.n - sectionBeat0;
     if (since > 0 && since % PHRASE_BEATS === 0 && t - sectionChangeT > 8 * P) nextPreset(blendSecs('groove'), moodTarget('groove'), true, 'f');
+  }
+
+  // Build 39: Sicherheitsnetz gegen Stillstand. Vorher wechselte die Automatik mit Scan nur in Groove und Drop
+  // (Phrasen) und an Abschnittsgrenzen: in langen Intros, Breaks und Outros (oder nach einem Wischer neben dem
+  // Phrasen-Raster) blieb ein Bild minutenlang stehen. Jetzt: spätestens nach 16 Takten ohne Wechsel auf der nächsten Takt-Eins.
+  const STILL_BARS = 16;
+  function stillCheck(type, t, P) {
+    if (!auto || frozen || !(P > 0)) return;
+    if (scanActive() ? audio.paused : !micOn && audio.paused) return;
+    if (dropPre > 0.05) return;                                   // kurz vor dem Drop nicht dazwischenfunken, der Drop schneidet selbst
+    if (t - lastSwitch < STILL_BARS * 4 * P - P / 2) return;
+    rea('Wechsel: ' + STILL_BARS + ' Takte ohne Wechsel (' + (type || '–') + ')');
+    const k = type === 'warten' || !type ? 'intro' : type;
+    nextPreset(blendSecs(k), moodTarget(k), true, 't');
   }
 
   // Abschnittswechsel: hier passieren Schnitt, Blitz und Stimmungswechsel
@@ -2089,6 +2103,7 @@ function analyzeEnvelopes(env, hopS) {
         const rest = (s.t1 - ts) / A.beatS;
         if (since > 0 && since % PHRASE_BEATS === 0 && rest >= MIN_REST_BEATS && t - sectionChangeT > 8 * P) nextPreset(blendSecs('groove'), moodTarget('groove'), true, 'f');
       }
+      if (prevBi !== null && bi === prevBi + 1 && beat.n % 4 === 0) stillCheck(type, t, P);
     }
   }
 
