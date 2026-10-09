@@ -106,3 +106,11 @@ Stoss beim Bildwechsel), Hats & Snares (Funken), Build-up (Ansparen, Ausholen). 
 wie Build 45. Bricht `12b` ab, laeuft alles wie vorher (`window.__AMX` fehlt).
 Protokoll: „Mischpult · Drop: Konto …“, „Mischpult · Feder geloest …“ und einmal pro Minute eine Zeile
 mit Kick-Stoessen, Zoom, Drehen, Schwanken, Funken, Konto und wie oft gedeckelt wurde. Debug: `?debug`, `window.__MX`.
+
+## Notaus und Hänger-Wächter (Build 50)
+
+- **■ Stopp** (oder drei Finger gleichzeitig auf den Bildschirm): beendet sofort Ton, Grafik, Mikrofon und Bildschirmsperre. Danach „Neu starten“.
+  Wirkt nur, solange die Seite noch reagiert. Steht sie komplett, hilft nur Schließen; der Ton läuft dann in iOS in einem eigenen Prozess weiter.
+- **Hänger-Wächter**: ein Worker misst jede Sekunde. Steht die Seite länger als 6 s, schreibt er auf, welches Bild lief. Beim nächsten Start steht das im Protokoll
+  („Letzter Lauf hing …“); das Bild wird 7 Tage nicht mehr gewählt.
+- **Letzter Lauf** (Protokoll-Leiste): die letzten 150 Zeilen vom vorigen Start, auch nach einem Hänger.

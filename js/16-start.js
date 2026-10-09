@@ -12,6 +12,7 @@ const WAKE_MP4 = 'data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1w
 const WAKE_WEBM = 'data:video/webm;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQJChYECGFOAZwEAAAAAAAInEU2bdLpNu4tTq4QVSalmU6yBoU27i1OrhBZUrmtTrIHYTbuMU6uEElTDZ1OsggEeTbuMU6uEHFO7a1OsggIR7AEAAAAAAABZAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVSalmsirXsYMPQkBNgI1MYXZmNjAuMTYuMTAwV0GNTGF2ZjYwLjE2LjEwMESJiECfQAAAAAAAFlSua8GuAQAAAAAAADjXgQFzxYjFMvH4un7ZEJyBACK1nIN1bmSIgQCGhVZfVlA4g4EBI+ODhB3NZQDgibCBELqBEJqBAhJUw2f8c3OgY8CAZ8iaRaOHRU5DT0RFUkSHjUxhdmY2MC4xNi4xMDBzc9ZjwItjxYjFMvH4un7ZEGfIoUWjh0VOQ09ERVJEh5RMYXZjNjAuMzEuMTAyIGxpYnZweGfIoUWjiERVUkFUSU9ORIeTMDA6MDA6MDIuMDAwMDAwMDAwAB9DtnXt54EAo6OBAACAEAIAnQEqEAAQAABHCIWFiIWEiAICAAwNYAD+/6tQgKOVgQH0ALEBAAEQEAAYABhYL/QACAAAo5WBA+gAsQEAARAQABgAGFgv9AAIAACjlYEF3ACxAQABEBAAGAAYWC/0AAgAABxTu2uRu4+zgQC3iveBAfGCAZ/wgQM=';
 function wakeLog(s) { if (s !== wakeState) { wakeState = s; rea('Bildschirm-Wachhalter: ' + s); } }
 function wakeFallback(why) {
+  if (panicked) return;
   try {
     if (!wakeVideo) {
       wakeVideo = document.createElement('video');
@@ -24,7 +25,7 @@ function wakeFallback(why) {
   } catch (e) { wakeLog('aus (' + why + '; ' + (e && e.message) + ')'); }
 }
 async function requestWake() {
-  if (document.visibilityState !== 'visible') return;
+  if (panicked || document.visibilityState !== 'visible') return;
   if (wakeSentinel && !wakeSentinel.released) return;
   if (!('wakeLock' in navigator)) { wakeFallback('API fehlt'); return; }
   try {
@@ -48,5 +49,77 @@ window.addEventListener('pagehide', () => { saveProfiles(performance.now()); jrE
 
 if (createViz()) requestWake();
 loop();
+
+// ===== Notaus (Build 50) =====
+// Schaltet sofort alles ab, was Ton, Mikrofon, Bildschirmsperre oder Grafik belegt, und lässt nichts mehr von allein anlaufen.
+// Wirkt, solange die Seite noch auf Eingaben reagiert (auch bei sehr langsamer Grafik). Hängt die Seite ganz, kann sie selbst nichts mehr tun:
+// dafür gibt es unten den Hänger-Wächter, der es aufschreibt und das Bild beim nächsten Start sperrt.
+function panic(why) {
+  if (panicked) return;
+  panicked = true; wantPlay = false;
+  err('NOTAUS (' + why + ')');
+  const tun = f => { try { f(); } catch (e) {} };
+  tun(() => { queue.length = 0; curFile = null; });                  // laufende Scans hören am nächsten Teilstück auf
+  tun(() => { audio.pause(); audio.removeAttribute('src'); audio.load(); });
+  tun(() => { if (silentEl) { silentEl.pause(); silentEl.removeAttribute('src'); silentEl.load(); silentEl = null; } });
+  tun(bufStop);
+  tun(() => { if (micOn) stopMic(); });
+  tun(() => { if (wakeSentinel) wakeSentinel.release(); });
+  tun(() => { if (wakeVideo) { wakeVideo.pause(); wakeVideo.remove(); wakeVideo = null; } });
+  tun(() => { viz = null; });                                         // die Schleife zeichnet nichts mehr
+  tun(() => ctx.suspend());
+  tun(() => { if (navigator.mediaSession) { navigator.mediaSession.playbackState = 'none'; navigator.mediaSession.metadata = null; } });
+  tun(() => { for (const c of [canvas, shEl, fxc]) c.style.display = 'none'; hud.style.display = 'none'; });
+  tun(() => { $('panicBox').hidden = false; });
+  tun(() => lastLogSave(true));
+}
+$('panic').addEventListener('click', () => panic('Knopf'));
+$('panicReload').addEventListener('click', () => location.reload());
+window.addEventListener('touchstart', e => { if (e.touches && e.touches.length >= 3) panic('drei Finger'); }, { passive: true, capture: true });
+
+// ===== Hänger-Wächter (Build 50) =====
+// Ein Web Worker läuft auf einem eigenen Faden und bekommt jede Sekunde ein Lebenszeichen der Seite samt dem, was gerade lief. Bleibt es bei sichtbarer Seite
+// länger als 6 s aus, schreibt der Worker das in die Datenbank (IndexedDB), und zwar fortlaufend, auch wenn die Seite nie zurückkommt. Beim nächsten Start
+// steht es im Protokoll; ein Bild, bei dem die Seite nicht zurückkam oder über 10 s stand, ist dann 7 Tage gesperrt.
+const WD_SRC = `
+let last = Date.now(), vis = true, crumb = null, hung = 0, since = 0, hungCrumb = null, db = null;
+const put = (k, v) => { try { db && db.transaction('k', 'readwrite').objectStore('k').put(v, k); } catch (e) {} };
+try { const r = indexedDB.open('acid-wd', 1); r.onupgradeneeded = () => r.result.createObjectStore('k'); r.onsuccess = () => { db = r.result; }; } catch (e) {}
+onmessage = e => {
+  const m = e.data; last = Date.now(); vis = m.vis; if (m.crumb) crumb = m.crumb;
+  if (hung) { put('hang', { at: since, ms: last - since, crumb: hungCrumb, recovered: true }); hung = 0; }
+};
+setInterval(() => {
+  const ms = Date.now() - last;
+  if (vis && ms > 6000) { if (!hung) { hung = 1; since = last; hungCrumb = crumb; } put('hang', { at: since, ms, crumb: hungCrumb, recovered: false }); }
+}, 1000);`;
+const SUSPECT_KEY = 'am-suspect-v1', SUSPECT_TTL = 7 * 86400;
+{ const now = Date.now() / 1000, l = store.get(SUSPECT_KEY, []);
+  if (Array.isArray(l)) for (const e of l) if (e && typeof e.n === 'string' && e.t > now - SUSPECT_TTL) suspect.add(e.n); }
+function wdRead() {                                                   // liest und löscht den Eintrag des Wächters vom letzten Lauf
+  return new Promise(res => {
+    try {
+      const r = indexedDB.open('acid-wd', 1); r.onupgradeneeded = () => r.result.createObjectStore('k'); r.onerror = () => res(null);
+      r.onsuccess = () => { const st = r.result.transaction('k', 'readwrite').objectStore('k'), g = st.get('hang'); g.onsuccess = () => { if (g.result) st.delete('hang'); res(g.result || null); }; g.onerror = () => res(null); };
+    } catch (e) { res(null); }
+  });
+}
+wdRead().then(h => {
+  if (!h || !h.ms) return;
+  const c = h.crumb || {}, secs = Math.round(h.ms / 1000);
+  err('Letzter Lauf hing ' + secs + ' s (' + (h.recovered ? 'kam zurück' : 'kam nicht zurück') + ') · zuletzt: ' + (c.txt || 'unbekannt'));
+  if (c.n && (!h.recovered || h.ms > 10000)) {
+    suspect.add(c.n);
+    const l = store.get(SUSPECT_KEY, []); l.push({ n: c.n, t: Math.floor(Date.now() / 1000) }); store.set(SUSPECT_KEY, l.slice(-30));
+    sayFor('Der letzte Lauf ist bei „' + c.n + '“ hängen geblieben. Dieses Bild kommt 7 Tage nicht mehr vor.', 14000);
+  }
+});
+let wd = null;
+try { wd = new Worker(URL.createObjectURL(new Blob([WD_SRC], { type: 'text/javascript' }))); } catch (e) { rea('Hänger-Wächter nicht verfügbar: ' + (e && e.message)); }
+const wdBeat = withCrumb => { if (!wd || panicked) return; const m = { vis: document.visibilityState === 'visible' };
+  if (withCrumb) m.crumb = { n: curName || '', txt: (curName || '–') + ' · ' + W + '×' + H + ' · Lastbremse Stufe ' + curStep + ' · ' + (audio.paused ? 'Pause' : 'spielt') + ' · Abschnitt ' + sectionKey() };
+  try { wd.postMessage(m); } catch (e) {} };
+setInterval(() => wdBeat(true), 1000);
+document.addEventListener('visibilitychange', () => wdBeat(false));
 
 window.__AM_STEP = 16;

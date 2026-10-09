@@ -36,7 +36,7 @@ function brakeTry(n, fps, t) {
   if (JR.run) JR.run.fl |= 128;
   return true;
 }
-function usable(n) { return !broken.has(n) && !DEAD.has(n) && !(guard && slow.has(n)); }
+function usable(n) { return !broken.has(n) && !DEAD.has(n) && !suspect.has(n) && !(guard && slow.has(n)); }
 function loadByName(n, blend, pushHist = true, why = 'a') {
   rea('Preset: ' + n);
   if (!viz) return false;

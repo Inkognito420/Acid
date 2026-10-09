@@ -262,6 +262,51 @@ const SZ = {
     check('Protokoll: Obergrenze 400, die ersten Zeilen (Build, Start) bleiben, Lücke ist markiert', lg.n === 400 && /Seite geladen/.test(lg.kopf) && lg.luecke && lg.text && lg.letzte === 'Füllzeile 699', JSON.stringify(lg));
     await close();
   },
+  async notaus() {
+    const { page, close } = await open();
+    await page.setInputFiles('#fileIn', [T[0]]);
+    await page.waitForFunction(() => curAnalysis && curAnalysis.beatS && !audio.paused, null, { timeout: 120000, polling: 200 });
+    const r = await page.evaluate(async () => {
+      const w = ms => new Promise(r => setTimeout(r, ms)), touch = i => new Touch({ identifier: i, target: document.body, clientX: 50 + 40 * i, clientY: 300 });
+      const vor = { spielt: !audio.paused, ctx: ctx.state };
+      document.body.dispatchEvent(new TouchEvent('touchstart', { touches: [touch(1), touch(2)], bubbles: true })); const zweiFinger = panicked;
+      document.body.dispatchEvent(new TouchEvent('touchstart', { touches: [touch(1), touch(2), touch(3)], bubbles: true })); await w(400);
+      const vis = v => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => v }); document.dispatchEvent(new Event('visibilitychange')); };
+      vis('hidden'); await w(100); vis('visible'); await w(900);        // Rückkehr aus dem Hintergrund darf nichts wieder anwerfen
+      return { vor, zweiFinger, panicked, pausiert: audio.paused, quelleWeg: audio.getAttribute('src') === null, ctx: ctx.state, vizAus: viz === null, overlay: !$('panicBox').hidden, hudWeg: hud.style.display === 'none', warteschlangeLeer: queue.length === 0, wake: !wakeSentinel || wakeSentinel.released, mikro: micOn };
+    });
+    check('Notaus (drei Finger): zwei Finger tun nichts, drei stoppen Ton, Grafik und Bildschirmsperre', r.vor.spielt && !r.zweiFinger && r.panicked && r.pausiert && r.quelleWeg && r.vizAus && r.overlay && r.hudWeg && r.warteschlangeLeer && r.wake && !r.mikro, JSON.stringify(r));
+    check('Notaus: nach dem Hintergrund startet nichts von allein wieder (Audio-Engine bleibt aus)', r.ctx === 'suspended' && r.pausiert, JSON.stringify(r));
+    await close();
+    const b = await open();
+    await b.page.click('#panic'); await b.page.waitForTimeout(300);
+    check('Notaus (Knopf): löst aus und zeigt die Meldung', await b.page.evaluate(() => panicked && !$('panicBox').hidden && LOG.some(l => /NOTAUS \(Knopf\)/.test(l.x))));
+    await b.close();
+  },
+  async haenger() {
+    // Der Wächter-Worker muss einen Stillstand der Seite aufschreiben, auch wenn danach alles neu startet
+    const { page, close } = await open();
+    await page.waitForTimeout(2500);
+    await page.evaluate(() => { const t = performance.now(); while (performance.now() - t < 11000) {} });     // Seite steht 11 s
+    await page.waitForTimeout(3000);
+    const rec = await page.evaluate(() => new Promise(res => { const r = indexedDB.open('acid-wd', 1); r.onsuccess = () => { const g = r.result.transaction('k').objectStore('k').get('hang'); g.onsuccess = () => res(g.result || null); }; r.onerror = () => res(null); }));
+    check('Hänger-Wächter: 11 s Stillstand aufgeschrieben, mit dem Bild, das lief', rec && rec.recovered && rec.ms >= 9000 && rec.crumb && rec.crumb.n && /Lastbremse/.test(rec.crumb.txt), JSON.stringify(rec));
+    await page.reload({ waitUntil: 'load' }); await page.waitForFunction(() => window.__AM_STEP === 16, null, { timeout: 15000 }); await page.waitForTimeout(1500);
+    const n = await page.evaluate(() => ({ meldung: LOG.some(l => /Letzter Lauf hing/.test(l.x)), gesperrt: [...suspect], gespeichert: store.get('am-suspect-v1', []).length }));
+    check('Hänger-Wächter: nächster Start meldet den Hänger und sperrt das Bild für 7 Tage', n.meldung && n.gesperrt.length === 1 && n.gesperrt[0] === rec.crumb.n && n.gespeichert === 1, JSON.stringify(n) + ' erwartet ' + (rec && rec.crumb && rec.crumb.n));
+    const aus = await page.evaluate(() => { for (let i = 0; i < 200; i++) nextPreset(0, undefined, false, 't'); return [...suspect][0] === curName; });
+    check('Hänger-Wächter: das gesperrte Bild wird bei 200 Wechseln nicht mehr gewählt', await page.evaluate(() => { const bad = [...suspect][0]; let hit = 0; for (let i = 0; i < 200; i++) { nextPreset(0, undefined, false, 't'); if (curName === bad) hit++; } return hit === 0; }), String(aus));
+    await close();
+  },
+  async letzterlauf() {
+    const { page, close } = await open();
+    await page.evaluate(() => { rea('Markenzeile vom ersten Lauf'); lastLogSave(true); });
+    await page.reload({ waitUntil: 'load' }); await page.waitForFunction(() => window.__AM_STEP === 16, null, { timeout: 15000 });
+    await page.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new Error('nein')) } }); $('logBtn').click(); $('logPrev').click(); }); await page.waitForTimeout(30);
+    const r = await page.evaluate(() => ({ vorhanden: !!prevLog && /Markenzeile vom ersten Lauf/.test(prevLog.text) && /Seite geladen/.test(prevLog.text), zeigt: /LETZTEN Laufs/.test($('logpre').textContent) || $('logPrev').textContent === 'Kopiert' }));
+    check('Letzter Lauf: Protokoll des vorigen Starts ist da, und der Knopf gibt es aus', r.vorhanden && r.zeigt, JSON.stringify(r));
+    await close();
+  },
   async manifest() {
     const m = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.webmanifest'), 'utf8'));
     const miss = m.icons.map(i => i.src).concat(['icon-180.png']).filter(f => !fs.existsSync(path.join(ROOT, f)));

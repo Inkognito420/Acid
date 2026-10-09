@@ -27,12 +27,13 @@ const ACID = new Set();
 try { const ap = window.ACID_PRESETS || {}; for (const k in ap) { presets[k] = ap[k]; ACID.add(k); } } catch (e) {}
 const names = Object.keys(presets);
 if (!names.length) { say('Keine Presets geladen. Lade die Seite neu.'); throw new Error('Acid Milkdrop: Start abgebrochen'); }
-const broken = new Set(), slow = new Set();
+const broken = new Set(), slow = new Set(), suspect = new Set();   // suspect: Bilder, bei denen der letzte Lauf hängen blieb (Hänger-Wächter in 16)
+let panicked = false;                                                // Notaus (Build 50): nach dem Stopp startet nichts mehr von allein
 
 // ===== Audio =====
 const AC = window.AudioContext || window.webkitAudioContext;
 const ctx = new AC();
-const unlock = () => { if (ctx.state !== 'running') ctx.resume().catch(() => {}); };
+const unlock = () => { if (!panicked && ctx.state !== 'running') ctx.resume().catch(() => {}); };
 ['pointerdown', 'touchend', 'click'].forEach(ev => document.addEventListener(ev, unlock, { capture: true, passive: true }));
 
 // Quelle → Reaktion (Gain) → Latenz (Delay) → Visualizer + Analyse. Hörbarer Ton geht unverzögert raus.
@@ -51,7 +52,9 @@ const binHz = ctx.sampleRate / analyser.fftSize;
 // ===== Protokoll: Auslöser → Reaktion → Ergebnis =====
 const LOG = [], LOG_MAX = 400, LOG_HEAD = 6, t0 = performance.now();   // die ersten LOG_HEAD Zeilen (Build, Start, Gerät) bleiben immer erhalten (Build 49)
 const stamp = () => { const t = (performance.now() - t0) / 1000; return String(Math.floor(t / 60)).padStart(2, '0') + ':' + (t % 60).toFixed(1).padStart(4, '0'); };
+let logCount = 0;
 function logEv(kind, text) {
+  logCount++;
   LOG.push({ t: stamp(), k: kind, x: String(text) });
   if (LOG.length > LOG_MAX) {
     const g = LOG[LOG_HEAD];
@@ -64,7 +67,9 @@ const trg = t => logEv('a', t), rea = t => logEv('r', t), erg = t => logEv('e', 
 let hudWoke = 0;                                 // Zeitpunkt, an dem ein Tipp die Leiste geweckt hat
 const KIND = { a: 'AUSLÖSER ', r: 'REAKTION  ', e: 'ERGEBNIS  ', x: 'FEHLER    ' };
 function logText() { return LOG.map(l => l.t + '  ' + KIND[l.k] + l.x).join('\n'); }
+let logHold = false;                              // zeigt das Protokoll des letzten Laufs: neue Zeilen überschreiben es nicht
 function renderLog() {
+  if (logHold) return;
   const box = document.getElementById('logpre'); if (!box || document.getElementById('logbox').hidden) return;
   box.textContent = '';
   LOG.forEach(l => { const d = document.createElement('div'); d.className = l.k; d.textContent = l.t + '  ' + KIND[l.k] + l.x; box.appendChild(d); });
@@ -86,8 +91,8 @@ function snapshot() {
   } catch (e) { return 'Status nicht lesbar: ' + e.message; }
 }
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD = 'Build 49 · Fixes aus dem iPhone-Protokoll: Lastbremse nach Hintergrund, Play-Tipp, doppelter Bildwechsel nach dem Drop, Protokollkopf';
-const BUILD_NO = 49;
+const BUILD = 'Build 50 · Notaus (Knopf oder drei Finger), Hänger-Wächter, Protokoll des letzten Laufs';
+const BUILD_NO = 50;
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);
@@ -121,6 +126,7 @@ canvas.addEventListener('pointerup', () => trg('Tipp/Wisch aufs Bild'));
 // Zurück aus dem Hintergrund (z. B. App zum zweiten Mal geöffnet): Audio-Sitzung und Engine neu anstoßen
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') { rea('Seite im Hintergrund'); return; }
+  if (panicked) return;
   rea('Seite wieder sichtbar · Audio-Engine ' + ctx.state);
   try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
   ctx.resume().then(() => rea('Audio-Engine nach Rückkehr: ' + ctx.state), () => {});
@@ -174,11 +180,27 @@ audio.addEventListener('pause', () => { setTimeout(() => resumeIfCut('Pause ohne
 
 // Bedienung des Protokoll-Fensters
 $('logBtn').addEventListener('click', () => {
-  const open = $('logbox').hidden; $('logbox').hidden = !open; $('logBtn').setAttribute('aria-expanded', String(open)); $('logBtn').classList.toggle('hot', open);
+  logHold = false; const open = $('logbox').hidden; $('logbox').hidden = !open; $('logBtn').setAttribute('aria-expanded', String(open)); $('logBtn').classList.toggle('hot', open);
   if (open) { erg(snapshot()); }
 });
-$('logSnap').addEventListener('click', () => erg(snapshot()));
+$('logSnap').addEventListener('click', () => { logHold = false; erg(snapshot()); });
 $('logClear').addEventListener('click', () => { LOG.length = 0; renderLog(); });
+// Protokoll des letzten Laufs (Build 50): überlebt einen Hänger. Das laufende Protokoll wird ab 30 s Laufzeit alle 10 s gekürzt gesichert, der Stand vom
+// vorigen Start liegt in prevLog.
+const prevLog = store.get('am-curlog', null);
+let lastLogN = -1;
+function lastLogSave(force) {
+  if (!force && (performance.now() - t0 < 30000 || logCount === lastLogN)) return;
+  lastLogN = logCount;
+  store.set('am-curlog', { b: BUILD_NO, at: Math.floor(Date.now() / 1000), text: logText().split('\n').slice(-150).join('\n') });
+}
+setInterval(() => lastLogSave(false), 10000);
+$('logPrev').addEventListener('click', () => {
+  if (!prevLog) { say('Vom letzten Lauf ist kein Protokoll gespeichert.'); return; }
+  const txt = 'Acid Milkdrop Protokoll des LETZTEN Laufs (Build ' + prevLog.b + ', ' + new Date(prevLog.at * 1000).toLocaleString('de-DE') + ', letzte Zeilen)\n' + prevLog.text;
+  const show = () => { logHold = true; $('logpre').textContent = txt; const r = document.createRange(); r.selectNodeContents($('logpre')); const se = getSelection(); se.removeAllRanges(); se.addRange(r); say('Protokoll des letzten Laufs steht oben. Markiert, von Hand kopieren.'); };
+  try { navigator.clipboard.writeText(txt).then(() => { $('logPrev').textContent = 'Kopiert'; setTimeout(() => { $('logPrev').textContent = 'Letzter Lauf'; }, 2000); }, show); } catch (e) { show(); }
+});
 $('logCopy').addEventListener('click', () => {
   const txt = 'Acid Milkdrop Protokoll · ' + BUILD + ' · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + '\n' + logText();
   const ok = () => { $('logCopy').textContent = 'Kopiert'; setTimeout(() => { $('logCopy').textContent = 'Kopieren'; }, 2000); };
