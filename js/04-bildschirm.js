@@ -39,7 +39,7 @@ const queueResize = () => { clearTimeout(rT); rT = setTimeout(resize, 150); clea
 window.addEventListener('resize', queueResize);
 window.addEventListener('orientationchange', queueResize);
 if (window.visualViewport) window.visualViewport.addEventListener('resize', queueResize);
-$('quality').value = '2k';                       // fest: 2K (auf dem iPhone 15 Pro entspricht das der vollen Pixelzahl)
+$('quality').value = '1080';                     // fest: 1080p (Build 52; vorher 2K = volle Pixelzahl des iPhone 15 Pro, das zwang schwere Presets in die Lastbremse und gab Unschärfesprünge)
 $('quality').addEventListener('change', () => { store.set('am-quality', $('quality').value); W = 0; resize(); });
 resize();
 
