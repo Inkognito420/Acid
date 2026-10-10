@@ -340,6 +340,27 @@ function klangSummary(A) {
 }
 
 // ===== Klangmesser (Build 43) =====
+// Build 55: Tonart nach Krumhansl-Schmuckler. Der Tonvorrat eines Takts (12 Töne) wird mit den typischen Profilen für Dur und Moll in allen 12 Lagen verglichen
+// (Pearson-Korrelation); die beste Lage gewinnt. Ergebnis: Grundton und Sicherheit tk 0..1 (Korrelation 0,35 = 0, 0,80 = 1). Vorher: stärkster Einzelton und sein Anteil.
+// Bewusst keine Umrechnung Dur -> parallele Moll-Tonart: eine Säge (303) hat starke Terz- und Quint-Obertöne und sieht wie Dur auf ihrem Grundton aus, mit Umrechnung käme F# statt A heraus.
+// Dass Moll und sein Dur-Zwilling (a / C) gelegentlich wechseln, fängt die 4-Takt-Wartezeit der Takt-Farbe ab.
+const KM_KS_MAJ = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88], KM_KS_MIN = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
+const KM_TON_R0 = 0.35, KM_TON_R1 = 0.80;
+function kmKey(ch) {
+  let s = 0; for (let k = 0; k < 12; k++) s += ch[k];
+  if (!(s > 0)) return { ton: 0, tk: 0 };
+  const mx = s / 12; let vx = 0; for (let k = 0; k < 12; k++) vx += (ch[k] - mx) * (ch[k] - mx);
+  if (!(vx > 0)) return { ton: 0, tk: 0 };
+  let best = -2, bt = 0, bm = 0;
+  for (let m = 0; m < 2; m++) {
+    const P = m ? KM_KS_MIN : KM_KS_MAJ; let sp = 0; for (let k = 0; k < 12; k++) sp += P[k]; const mp = sp / 12; let vp = 0; for (let k = 0; k < 12; k++) vp += (P[k] - mp) * (P[k] - mp);
+    for (let t = 0; t < 12; t++) {
+      let c = 0; for (let k = 0; k < 12; k++) c += (ch[k] - mx) * (P[(k - t + 12) % 12] - mp);
+      const r = c / Math.sqrt(vx * vp); if (r > best) { best = r; bt = t; bm = m; }
+    }
+  }
+  return { ton: bt, tk: Math.max(0, Math.min(1, (best - KM_TON_R0) / (KM_TON_R1 - KM_TON_R0))) };
+}
 // Messwerte pro Takt: Druck, Hektik, Schärfe, Spannung, Filter und Ton (Grundton). Rechenwege und Skalen stammen aus dem
 // eigenständigen Klangmesser (gleiche FFT, gleiche Formeln), laufen aber hier auf dem Raster dieses Scans: Tempo auf 0,01 BPM,
 // echte Takt-Eins und Abschnitte. Der Klangmesser hatte ein eigenes grobes Raster (120-160 BPM, Takt-Anfang beliebig).
@@ -484,13 +505,17 @@ async function kmBars(A, M, tick) {
     for (let k = 0; k < 12; k++) { ct += ch[k]; if (ch[k] > ch[top]) top = k; }
     const pm = pulse(M.envM, b), ph = pulse(M.envH, b);
     bars.push({
-      db: 10 * Math.log10(ea + 1e-12), dbB: 10 * Math.log10(ebs + 1e-12), oM, oH, c: cMed, fl: flMed, cb: cStd / (cMean + 1e-6), ton: top, tk: ct > 0 ? ch[top] / ct : 0,
+      db: 10 * Math.log10(ea + 1e-12), dbB: 10 * Math.log10(ebs + 1e-12), oM, oH, c: cMed, fl: flMed, cb: cStd / (cMean + 1e-6), ton: top, tk: ct > 0 ? ch[top] / ct : 0, ch: ct > 0 ? Array.from(ch, v => v / ct) : null,
       p8: pm[0] + 0.7 * ph[0], p16: pm[1] + 0.7 * ph[1], p32: pm[2] + 0.7 * ph[2], puls: (0.5 * pm[0] + pm[1] + 1.5 * pm[2]) + 0.7 * (ph[1] + 1.5 * ph[2])
     });
     if (tick && (b & 15) === 15) await tick();
   }
   // Bass-Pegel auf den Track beziehen (das Spektrum ist nicht normiert)
   const dbBref = pct(bars.map(x => x.dbB), 0.9), E = [];
+  bars.forEach((x, i) => {                                             // Tonart über 3 Takte (dieser und je ein Nachbar) geglättet
+    const w = new Array(12).fill(0); for (let j = Math.max(0, i - 1); j <= Math.min(bars.length - 1, i + 1); j++) if (bars[j].ch) for (let k = 0; k < 12; k++) w[k] += bars[j].ch[k];
+    const r = kmKey(w); x.ton = r.ton; x.tk = r.tk;
+  });
   for (const x of bars) {
     x.druck = 0.6 * kmMap(x.db, -24, -5) + 0.4 * kmMap(x.dbB - dbBref, -18, 0);
     x.hektik = Math.max(0, Math.min(1, 0.75 * kmMap(x.puls, KM_PULS_LO, KM_PULS_HI) + 0.25 * ((x.oM + x.oH) / 2) / 0.75));
@@ -517,7 +542,7 @@ async function kmBars(A, M, tick) {
   // Eigene Skala des Tracks: 10-%- bis 90-%-Wert der vollen Takte. Damit nutzt ein ruhiger Track die ganze Breite (Anzeige und Bildwahl bleiben aber absolut vergleichbar).
   K.lo = {}; K.hi = {};
   for (const key of ['druck', 'hektik', 'schaerfe', 'beweg']) { const v = full.map(j => K[key][j]); K.lo[key] = pct(v, 0.1); K.hi[key] = pct(v, 0.9); }
-  const cnt = new Array(12).fill(0); for (let j = 0; j < nBars; j++) if (K.tk[j] > 0.15) cnt[K.ton[j]]++;
+  const cnt = new Array(12).fill(0); for (let j = 0; j < nBars; j++) if (K.tk[j] > 0.25) cnt[K.ton[j]]++;
   let key = 0; for (let k = 1; k < 12; k++) if (cnt[k] > cnt[key]) key = k;
   K.key = key; K.keyShare = cnt[key] / Math.max(1, nBars);
   const rc = { 8: 0, 16: 0, 32: 0 }; for (const j of full) rc[K.raster[j]]++;

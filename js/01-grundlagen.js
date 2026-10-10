@@ -91,8 +91,8 @@ function snapshot() {
   } catch (e) { return 'Status nicht lesbar: ' + e.message; }
 }
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD = 'Build 54 · Takt-Farbe wartet 4 Takte auf neuen Ton, Lastbremse fängt bei 1080p frisch an';
-const BUILD_NO = 54;
+const BUILD = 'Build 55 · Tonart-Erkennung nach Krumhansl-Schmuckler (Takt-Farbe folgt dem Grundton zuverlässiger)';
+const BUILD_NO = 55;
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);
@@ -260,7 +260,7 @@ let swLive = 0;                                   // Build 53: geglättete Filte
 let kickGlow = 0, pulse = 0, flash = 0, build = 0, vign = 0, hue = 0, lastHue = 0;
 // Takt-Farbe: eigener Farbton-Anteil, springt auf der Takt-Eins weiter (hue = Acid-Anteil, barHue = Takt-Anteil)
 const TON_HALT = 3;                              // Build 54: so viele Takte nach dem ersten muss ein neuer Ton bleiben (Build 51: 1, bei Protokoll 03:05/03:08 sprang A→E→A nach zwei Takten)
-const TON_MIN = 0.10;                            // Build 52: Ton-Sicherheit ab 10 % (vorher 15 %): in dichten Techno-Takten liegt sie bei 0,15-0,18, ein Track mit 17 % löste in 7 Minuten keinen einzigen Farbsprung aus
+const TON_MIN = 0.25;                            // Build 55: Ton-Sicherheit ab 0,25 (neue Skala aus der Tonart-Korrelation: 0,35 = 0, 0,80 = 1; 0,25 entspricht r = 0,46)
 let barHue = 0, barHueTarget = 0, barSteps = 0, tonLast = -1;   // tonLast: zuletzt angewendeter Grundton (Build 51: Pendeln zwischen zwei Tönen löst keinen Farbsprung mehr aus)
 // Drop-Aufbau: dropPre 0..1 = wie nah der nächste Drop ist (mit Scan ab 8 Takten vorher), bang = Aufknallen im Drop
 let dropPre = 0, bang = 0, sat = 1, lastSat = 1, preLogT = -1;

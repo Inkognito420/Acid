@@ -327,8 +327,10 @@ const SZ = {
     await page.waitForFunction(() => curAnalysis && curAnalysis.km, null, { timeout: 120000, polling: 200 });
     const sw = await page.evaluate(() => { const K = curAnalysis.km, v = Array.from(K.sweep || []); return { n: K.n, len: v.length, max: Math.max(0, ...v.map(Math.abs)), ok: v.every(x => x >= -1 && x <= 1) }; });
     check('Filterfahrt: pro Takt ein Wert zwischen -1 und +1, im Test-Track mit wandernder Filterfrequenz nicht überall 0', sw.len === sw.n && sw.ok && sw.max > 0.1, JSON.stringify(sw));
+    const ky = await page.evaluate(() => ({ key: curAnalysis.km.key, share: curAnalysis.km.keyShare }));
+    check('Tonart: Test-Track (303-Linie auf A, E, G, B, C) wird als Grundton A erkannt', ky.key === 9 && ky.share > 0.4, JSON.stringify(ky));
     const q = await page.evaluate(() => { const t = targetSize(true); return { q: $('quality').value, lang: Math.max(t[0], t[1]), ton: TON_MIN, bk: BRAKE_KEY }; });
-    check('Standard-Auflösung: 1080p, längste Seite höchstens 1920 px; Ton-Schwelle 0,10; Lastbremse-Speicher v2', q.q === '1080' && q.lang <= 1920 && q.ton === 0.10 && q.bk === 'am-brake-v2', JSON.stringify(q));
+    check('Standard-Auflösung: 1080p, längste Seite höchstens 1920 px; Ton-Schwelle 0,25; Lastbremse-Speicher v2', q.q === '1080' && q.lang <= 1920 && q.ton === 0.25 && q.bk === 'am-brake-v2', JSON.stringify(q));
     await close();
   },
   async manifest() {

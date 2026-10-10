@@ -36,4 +36,13 @@ for (let i = 1; i < A.sections.length; i++) assert.ok(A.sections[i].t0 >= A.sect
 const F = kmFFT(256); for (let i = 0; i < 256; i++) { F.re[i] = Math.sin(2 * Math.PI * 8 * i / 256); F.im[i] = 0; } F.run();
 let pk = 1; for (let k = 1; k < 128; k++) if (Math.hypot(F.re[k], F.im[k]) > Math.hypot(F.re[pk], F.im[pk])) pk = k;
 assert.strictEqual(pk, 8, 'FFT-Spitze bei Bin ' + pk);
+// Tonart (Build 55): bekannte Tonvorräte müssen den richtigen Grundton ergeben
+const rot = (v, n) => v.map((_, i) => v[(i - n + 12) % 12]);
+const aMoll = [0.6, 0.02, 0.35, 0.02, 0.7, 0.2, 0.02, 0.3, 0.02, 1.0, 0.02, 0.05], cDur = [1.0, 0.02, 0.3, 0.02, 0.6, 0.4, 0.02, 0.7, 0.02, 0.3, 0.02, 0.2];
+let r = kmKey(aMoll); assert.ok(r.ton === 9 && r.tk > 0.5, 'a-Moll: Grundton ' + r.ton + ', Sicherheit ' + r.tk);
+r = kmKey(cDur); assert.ok(r.ton === 0 && r.tk > 0.4, 'C-Dur: Grundton C (0): ' + r.ton + ', ' + r.tk);
+r = kmKey(rot(aMoll, 9)); assert.ok(r.ton === 6, 'fis-Moll (6): ' + r.ton);
+r = kmKey(new Array(12).fill(0.1)); assert.ok(r.tk === 0, 'gleichmäßig verteilt: keine Sicherheit');
+r = kmKey(new Array(12).fill(0)); assert.ok(r.tk === 0, 'Stille: keine Sicherheit');
+r = kmKey(aMoll.map((v, i) => v + 0.04 * ((i * 7) % 5))); assert.ok(r.ton === 9, 'a-Moll bleibt mit leichtem Rauschen a-Moll');
 console.log('analyse.test.js: ok');
